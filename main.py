@@ -255,9 +255,15 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     
-    # Принудительно очищаем старые зависшие вебхуки и обновления перед стартом
+    print("[*] Сброс старых сессий Telegram...")
+    try:
+        await bot.close()
+    except:
+        pass
+        
     await bot.delete_webhook(drop_pending_updates=True)
-    await dp.start_polling(bot)
+    print(f"[+] Веб-сервер запущен на порту {port}")
+    await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
