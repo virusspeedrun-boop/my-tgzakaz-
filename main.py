@@ -117,9 +117,14 @@ async def catch_documents(message: types.Message):
         try:
             with zipfile.ZipFile(target_path, 'r') as zip_ref:
                 for member in zip_ref.namelist():
-                    m_base, m_ext = os.path.splitext(os.path.basename(member))
+                    if member.endswith('/'):
+                        continue
+                    
+                    pure_filename = os.path.basename(member)
+                    m_base, m_ext = os.path.splitext(pure_filename)
+                    
                     if m_ext in ['.session', '.json']:
-                        extracted_path = os.path.join(config.SESSIONS_DIR, os.path.basename(member))
+                        extracted_path = os.path.join(config.SESSIONS_DIR, pure_filename)
                         with open(extracted_path, "wb") as f:
                             f.write(zip_ref.read(member))
                         
