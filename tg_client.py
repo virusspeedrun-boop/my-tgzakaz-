@@ -26,61 +26,75 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     if not api_id or not api_hash:
         return {"status": "error", "message": "В JSON отсутствуют параметры api_id/api_hash"}
 
-    client = TelegramClient(session_path, int(api_id), api_hash)
-    await client.connect()
+    try:
+        client = TelegramClient(session_path, int(api_id), api_hash)
+        await asyncio.wait_for(client.connect(), timeout=15)
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
+    except Exception as e:
+        return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
 
-    if not await client.is_user_authorized():
+    try:
+        if not await client.is_user_authorized():
+            await client.disconnect()
+            return {"status": "error", "message": "Сессия невалидна или требует 2FA код"}
+    except Exception as e:
         await client.disconnect()
-        return {"status": "error", "message": "Сессия не авторизована или заблокирована"}
+        return {"status": "error", "message": f"Ошибка авторизации: {str(e)}"}
 
     bot_father = '@BotFather'
     
-    await client.send_message(bot_father, '/cancel')
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, '/newbot')
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, "App Launch Bot")
-    await asyncio.sleep(2)
+    try:
+        await client.send_message(bot_father, '/cancel')
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, '/newbot')
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "App Launch Bot")
+        await asyncio.sleep(2)
 
-    token = None
-    selected_username = None
-    
-    for _ in range(20):
-        selected_username = generate_random_username(prefix, hash_len)
-        await client.send_message(bot_father, selected_username)
+        token = None
+        selected_username = None
+        
+        for _ in range(20):
+            selected_username = generate_random_username(prefix, hash_len)
+            await client.send_message(bot_father, selected_username)
+            await asyncio.sleep(3)
+
+            messages = await client.get_messages(bot_father, limit=1)
+            reply = messages.text if messages else ""
+
+            if "Done! Congratulations" in reply:
+                try:
+                    for line in reply.split("\n"):
+                        if ":" in line and len(line) > 30:
+                            token = line.strip()
+                            break
+                except Exception:
+                    token = "Ошибка извлечения токена"
+                break
+            elif "already taken" in reply or "invalid" in reply:
+                continue
+
+        if not token:
+            await client.disconnect()
+            return {"status": "error", "message": "Превышено число попыток генерации свободного юзернейма"}
+
+        await client.send_message(bot_father, '/newapp')
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, f"@{selected_username}")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "Web Application")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "Mini App Description")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, app_url)
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "main")
         await asyncio.sleep(3)
 
-        messages = await client.get_messages(bot_father, limit=1)
-        reply = messages.text if messages else ""
-
-        if "Done! Congratulations" in reply:
-            try:
-                for line in reply.split("\n"):
-                    if ":" in line and len(line) > 30:
-                        token = line.strip()
-                        break
-            except Exception:
-                token = "Ошибка извлечения токена"
-            break
-        elif "already taken" in reply or "invalid" in reply:
-            continue
-
-    if not token:
+    except Exception as e:
         await client.disconnect()
-        return {"status": "error", "message": "Превышено число попыток генерации свободного юзернейма"}
-
-    await client.send_message(bot_father, '/newapp')
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, f"@{selected_username}")
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, "Web Application")
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, "Mini App Description")
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, app_url)
-    await asyncio.sleep(2)
-    await client.send_message(bot_father, "main")
-    await asyncio.sleep(3)
+        return {"status": "error", "message": f"Сбой во время диалога с BotFather: {str(e)}"}
 
     await client.disconnect()
     
