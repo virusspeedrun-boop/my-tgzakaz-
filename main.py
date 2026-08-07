@@ -150,19 +150,24 @@ async def catch_documents(message: types.Message):
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша queue пуста. Отправьте файлы сессий или .zip архив.")
+        await message.answer("Ваша очередь пуста. Отправьте файлы сессий или .zip архив.")
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
-    kb_list = []
-    
-    current_items = list(user_queue[uid].items())
-    for idx, (name, prefix) in enumerate(current_items):
+    for name, prefix in user_queue[uid].items():
         text += f"▪️ Аккаунт: `{name}` ➔ Префикс: **{prefix}**\n"
-        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setidx_{idx}")])
-
-    kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
-    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
+        
+    text += (
+        "\n✍️ **Как изменить префикс?**\n"
+        "Просто отправьте в чат сообщение в формате:\n"
+        "`префикс НомерТелефона` (например: `ww +14423094231`)\n\n"
+        "🗑 Чтобы сбросить всё, нажмите кнопку ниже:"
+    )
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")]
+    ])
+    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data == "flush_queue")
 async def flush_user_queue(callback: types.CallbackQuery):
@@ -175,38 +180,24 @@ async def flush_user_queue(callback: types.CallbackQuery):
             except Exception:
                 pass
         user_queue[uid].clear()
-    await callback.message.edit_text("🗑 Все загруженные файлы удалены, queue очищена.")
+    await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
 
-@dp.callback_query(F.data.startswith("setidx_"))
-async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
-    uid = callback.from_user.id
-    try:
-        idx = int(callback.data.split("setidx_"))
-        current_keys = list(user_queue[uid].keys())
-        session_target = current_keys[idx]
-    except Exception:
-        await callback.message.answer("Ошибка: сессия не найдена. Нажмите /start и загрузите файлы заново.")
-        await callback.answer()
-        return
-        
-    await state.set_state(BotSettings.waiting_for_prefix)
-    await state.update_data(target_session=session_target)
-    await callback.message.answer(f"Введите строку префикса для сессии `{session_target}` (буквы, цифры, `_`):")
-    await callback.answer()
-
-@dp.message(BotSettings.waiting_for_prefix, check_permission)
-async def commit_prefix_change(message: types.Message, state: FSMContext):
+@dp.message(lambda msg: len(msg.text.split()) == 2 and not msg.text.startswith("/"), check_permission)
+async def quick_set_prefix(message: types.Message):
     uid = message.from_user.id
-    user_data = await state.get_data()
-    target = user_data.get("target_session")
-    new_prefix = message.text.strip()
-
-    if uid in user_queue and target in user_queue[uid]:
-        user_queue[uid][target] = new_prefix
-        await message.answer(f"✅ Префикс для `{target}` успешно изменен на **{new_prefix}**")
+    try:
+        new_prefix, target_name = message.text.split()
+        target_name = target_name.strip()
+        new_prefix = new_prefix.strip()
         
-    await state.clear()
-    await show_queue(message)
+        if uid in user_queue and target_name in user_queue[uid]:
+            user_queue[uid][target_name] = new_prefix
+            await message.answer(f"✅ Префикс для `{target_name}` успешно изменен на **{new_prefix}**")
+            await show_queue(message)
+        else:
+            await message.answer("❌ Ошибка: аккаунт с таким номером не найден в вашей очереди.")
+    except Exception:
+        pass
 
 @dp.message(F.text == "🚀 Запустить генерацию", check_permission)
 async def process_generation(message: types.Message):
