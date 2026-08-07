@@ -155,9 +155,11 @@ async def show_queue(message: types.Message):
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
     kb_list = []
-    for name, prefix in user_queue[uid].items():
+    
+    current_items = list(user_queue[uid].items())
+    for idx, (name, prefix) in enumerate(current_items):
         text += f"▪️ Аккаунт: `{name}` ➔ Префикс: **{prefix}**\n"
-        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setpref_{name}")])
+        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setidx_{idx}")])
 
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
@@ -166,18 +168,27 @@ async def show_queue(message: types.Message):
 async def flush_user_queue(callback: types.CallbackQuery):
     uid = callback.from_user.id
     if uid in user_queue:
-        for name in user_queue[uid].keys():
+        for name in list(user_queue[uid].keys()):
             try:
                 os.remove(os.path.join(config.SESSIONS_DIR, f"{name}.session"))
                 os.remove(os.path.join(config.SESSIONS_DIR, f"{name}.json"))
             except Exception:
                 pass
         user_queue[uid].clear()
-    await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
+    await callback.message.edit_text("🗑 Все загруженные файлы удалены, queue очищена.")
 
-@dp.callback_query(F.data.startswith("setpref_"))
+@dp.callback_query(F.data.startswith("setidx_"))
 async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
-    session_target = callback.data.split("setpref_")
+    uid = callback.from_user.id
+    try:
+        idx = int(callback.data.split("setidx_")[1])
+        current_keys = list(user_queue[uid].keys())
+        session_target = current_keys[idx]
+    except Exception:
+        await callback.message.answer("Ошибка: сессия не найдена. Нажмите /start и загрузите файлы заново.")
+        await callback.answer()
+        return
+        
     await state.set_state(BotSettings.waiting_for_prefix)
     await state.update_data(target_session=session_target)
     await callback.message.answer(f"Введите строку префикса для сессии `{session_target}` (буквы, цифры, `_`):")
