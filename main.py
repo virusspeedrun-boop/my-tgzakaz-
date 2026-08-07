@@ -6,6 +6,7 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiohttp import web
 
 import config
 import tg_client
@@ -46,7 +47,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         
     await message.answer(
         "Система автоматизации создания ботов готова к работе.\n\n"
-        "Вы можете отправлять файлы .session и .json (по одному, группами или in .zip архиве).\n"
+        "Вы можете отправлять файлы .session и .json (по одному, группами или в .zip архиве).\n"
         "После загрузки перейдите в меню для распределения префиксов.",
         reply_markup=build_main_keyboard()
     )
@@ -242,11 +243,32 @@ async def process_generation(message: types.Message):
 
     await message.answer(final_report, parse_mode="Markdown", reply_markup=build_main_keyboard())
 
-async def main():
-    print("[*] Сброс старых сессий Telegram...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    print("[+] Бот успешно запущен на чистом поллинге!")
-    await dp.start_polling(bot, skip_updates=True)
+async def handle_webhook(request):
+    try:
+        data = await request.json()
+        update = types.Update(**data)
+        await dp.feed_update(bot, update)
+    except Exception as e:
+        print(f"[-] Ошибка обработки вебхука: {e}")
+    return web.Response(text="OK")
+
+async def on_startup(app):
+    render_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if render_url:
+        webhook_url = f"{render_url}/webhook"
+        await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        print(f"[+] Установлен вебхук на: {webhook_url}")
+    else:
+        print("[-] RENDER_EXTERNAL_URL не найден.")
+
+def main():
+    app = web.Application()
+    app.router.add_post('/webhook', handle_webhook)
+    app.on_startup.append(on_startup)
+    
+    port = int(os.environ.get("PORT", 10000))
+    print(f"[*] Старт сервера вебхуков на порту {port}")
+    web.run_app(app, host='0.0.0.0', port=port, access_log=None)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
