@@ -6,7 +6,6 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiohttp import web
 
 import config
 import tg_client
@@ -47,7 +46,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
         
     await message.answer(
         "Система автоматизации создания ботов готова к работе.\n\n"
-        "Вы можете отправлять файлы .session и .json (по одному, группами или в .zip архиве).\n"
+        "Вы можете отправлять файлы .session и .json (по одному, группами или in .zip архиве).\n"
         "После загрузки перейдите в меню для распределения префиксов.",
         reply_markup=build_main_keyboard()
     )
@@ -243,22 +242,11 @@ async def process_generation(message: types.Message):
 
     await message.answer(final_report, parse_mode="Markdown", reply_markup=build_main_keyboard())
 
-async def handle_web(request):
-    return web.Response(text="Бот активен")
-
-async def on_startup(app):
+async def main():
+    print("[*] Сброс старых сессий Telegram...")
     await bot.delete_webhook(drop_pending_updates=True)
-    asyncio.create_task(dp.start_polling(bot, skip_updates=True))
-    print("[+] Поллинг aiogram успешно запущен в фоне веб-сервера!")
-
-def main():
-    app = web.Application()
-    app.router.add_get('/', handle_web)
-    app.on_startup.append(on_startup)
-    
-    port = int(os.environ.get("PORT", 10000))
-    print(f"[*] Старт веб-сервера на порту {port}")
-    web.run_app(app, host='0.0.0.0', port=port, access_log=None)
+    print("[+] Бот успешно запущен на чистом поллинге!")
+    await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
