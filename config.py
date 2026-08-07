@@ -1,10 +1,9 @@
 import os
 
-# Вставь сюда токен твоего управляющего бота между кавычками
-BOT_TOKEN = "8779018854:AAFE9h5II_4VLEIwbv9G8TGeHpCVlHjmrQ8"
+BOT_TOKEN = "8307051627:AAFnXTHGcZSn4Hyt08d8HVPf9poMeUIG8xE"
 
-# Вставь свой числовой ID без кавычек (например: 8310775460)
-ALLOWED_USERS = [8310775460]
+allowed_raw = os.environ.get("ALLOWED_USERS", "8310775460")
+ALLOWED_USERS = [int(x.strip()) for x in allowed_raw.split(",") if x.strip().isdigit()]
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
