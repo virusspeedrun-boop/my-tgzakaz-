@@ -1,5 +1,6 @@
 import os
 import asyncio
+import zipfile
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -46,11 +47,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
         
     await message.answer(
         "Система автоматизации создания ботов готова к работе.\n\n"
-        "Вы можете отправлять файлы .session и .json (по одному или группами).\n"
+        "Вы можете отправлять файлы .session и .json (по одному, группами или в .zip архиве).\n"
         "После загрузки перейдите в меню для распределения префиксов.",
         reply_markup=build_main_keyboard()
     )
-
 @dp.message(F.text == "⚙️ Настройки софта", check_permission)
 async def show_settings(message: types.Message):
     text = (
@@ -106,9 +106,6 @@ async def catch_documents(message: types.Message):
     filename = doc.file_name
     base, ext = os.path.splitext(filename)
 
-    if ext not in ['.session', '.json']:
-        return
-
     if uid not in user_queue:
         user_queue[uid] = {}
 
@@ -116,16 +113,39 @@ async def catch_documents(message: types.Message):
     file_info = await bot.get_file(doc.file_id)
     await bot.download_file(file_info.file_path, target_path)
 
+    if ext == '.zip':
+        try:
+            with zipfile.ZipFile(target_path, 'r') as zip_ref:
+                for member in zip_ref.namelist():
+                    m_base, m_ext = os.path.splitext(os.path.basename(member))
+                    if m_ext in ['.session', '.json']:
+                        extracted_path = os.path.join(config.SESSIONS_DIR, os.path.basename(member))
+                        with open(extracted_path, "wb") as f:
+                            f.write(zip_ref.read(member))
+                        
+                        if m_ext == '.session' and m_base not in user_queue[uid]:
+                            user_queue[uid][m_base] = "qq"
+            os.remove(target_path)
+            await message.answer("📦 Архив успешно распакован! Все сессии добавлены в очередь.", parse_mode="Markdown")
+            return
+        except Exception as e:
+            await message.answer(f"❌ Ошибка при распаковке архива: {str(e)}")
+            if os.path.exists(target_path): os.remove(target_path)
+            return
+
+    if ext not in ['.session', '.json']:
+        if os.path.exists(target_path): os.remove(target_path)
+        return
+
     if ext == '.session' and base not in user_queue[uid]:
         user_queue[uid][base] = "qq"
 
     await message.answer(f"📥 Загружен и сохранен файл: `{filename}`", parse_mode="Markdown")
-
 @dp.message(F.text == "📋 Моя очередь", check_permission)
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша очередь пуста. Отправьте файлы сессий.")
+        await message.answer("Ваша очередь пуста. Отправьте файлы сессий или .zip архив.")
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
@@ -211,7 +231,6 @@ async def handle_web(request):
     return web.Response(text="Бот запущен и работает!")
 
 async def main():
-    # Запуск фонового веб-сервера aiohttp, чтобы Render успешно видел порт
     app = web.Application()
     app.router.add_get('/', handle_web)
     runner = web.AppRunner(app)
@@ -219,8 +238,6 @@ async def main():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    
-    print(f"[+] Веб-сервер запущен на порту {port}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
