@@ -150,7 +150,7 @@ async def catch_documents(message: types.Message):
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша очередь пуста. Отправьте файлы сессий или .zip архив.")
+        await message.answer("Ваша queue пуста. Отправьте файлы сессий или .zip архив.")
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
@@ -244,21 +244,21 @@ async def process_generation(message: types.Message):
     await message.answer(final_report, parse_mode="Markdown", reply_markup=build_main_keyboard())
 
 async def handle_web(request):
-    return web.Response(text="Бот запущен и работает!")
+    return web.Response(text="Бот активен")
 
-async def main():
+async def on_startup(app):
+    await bot.delete_webhook(drop_pending_updates=True)
+    asyncio.create_task(dp.start_polling(bot, skip_updates=True))
+    print("[+] Поллинг aiogram успешно запущен в фоне веб-сервера!")
+
+def main():
     app = web.Application()
     app.router.add_get('/', handle_web)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, '0.0.0.0', port)
-    await site.start()
+    app.on_startup.append(on_startup)
     
-    print("[*] Сброс старых сессий Telegram...")
-    await bot.delete_webhook(drop_pending_updates=True)
-    print(f"[+] Веб-сервер запущен на порту {port}")
-    await dp.start_polling(bot, skip_updates=True)
+    port = int(os.environ.get("PORT", 10000))
+    print(f"[*] Старт веб-сервера на порту {port}")
+    web.run_app(app, host='0.0.0.0', port=port, access_log=None)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
