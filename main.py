@@ -5,6 +5,7 @@ from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
+from aiohttp import web
 
 import config
 import tg_client
@@ -206,9 +207,20 @@ async def process_generation(message: types.Message):
 
     await message.answer(final_report, parse_mode="Markdown", reply_markup=build_main_keyboard())
 
+async def handle_web(request):
+    return web.Response(text="Бот запущен и работает!")
+
 async def main():
-    server = await asyncio.start_server(lambda r, w: None, '0.0.0.0', int(os.environ.get("PORT", 10000)))
-    print("[+] Бот успешно запущен в облаке!")
+    # Запуск фонового веб-сервера aiohttp, чтобы Render успешно видел порт
+    app = web.Application()
+    app.router.add_get('/', handle_web)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    print(f"[+] Веб-сервер запущен на порту {port}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
