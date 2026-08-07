@@ -181,7 +181,7 @@ async def flush_user_queue(callback: types.CallbackQuery):
 async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     try:
-        idx = int(callback.data.split("setidx_")[1])
+        idx = int(callback.data.split("setidx_"))
         current_keys = list(user_queue[uid].keys())
         session_target = current_keys[idx]
     except Exception:
@@ -254,6 +254,9 @@ async def main():
     port = int(os.environ.get("PORT", 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
+    
+    # Принудительно очищаем старые зависшие вебхуки и обновления перед стартом
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
