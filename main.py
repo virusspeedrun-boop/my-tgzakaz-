@@ -256,11 +256,6 @@ async def main():
     await site.start()
     
     print("[*] Сброс старых сессий Telegram...")
-    try:
-        await bot.close()
-    except:
-        pass
-        
     await bot.delete_webhook(drop_pending_updates=True)
     print(f"[+] Веб-сервер запущен на порту {port}")
     await dp.start_polling(bot, skip_updates=True)
