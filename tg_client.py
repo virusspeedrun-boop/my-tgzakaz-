@@ -1,4 +1,4 @@
-import os
+\import os
 import json
 import string
 import random
@@ -61,6 +61,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             await asyncio.sleep(3)
 
             messages = await client.get_messages(bot_father, limit=1)
+            # ИСПРАВЛЕНИЕ: Извлекаем текст из первого объекта списка сообщений Telethon
             reply = messages[0].text if messages else ""
 
             if "Done! Congratulations" in reply:
