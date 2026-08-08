@@ -18,6 +18,7 @@ class BotSettings(StatesGroup):
     waiting_for_url = State()
     waiting_for_hash = State()
     waiting_for_prefix = State()
+    waiting_for_global_prefix = State()
 
 runtime_settings = {
     "url": "https://example.com",
@@ -154,20 +155,37 @@ async def show_queue(message: types.Message):
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
-    for name, prefix in user_queue[uid].items():
-        text += f"▪️ Аккаунт: `{name}` ➔ Префикс: **{prefix}**\n"
-        
-    text += (
-        "\n✍️ **Как изменить префикс?**\n"
-        "Просто отправьте в чат сообщение в формате:\n"
-        "`префикс НомерТелефона` (например: `ww +14423094231`)\n\n"
-        "🗑 Чтобы сбросить всё, нажмите кнопку ниже:"
-    )
+    kb_list = []
     
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")]
-    ])
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    # Кнопка для задания общего префикса сразу всем аккаунтам
+    kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
+    
+    current_items = list(user_queue[uid].items())
+    for idx, (name, prefix) in enumerate(current_items):
+        text += f"▪️ Аккаунт: `{name}` ➔ Префикс: **{prefix}**\n"
+        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setidx_{idx}")])
+
+    kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
+
+@dp.callback_query(F.data == "set_global_prefix")
+async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Введите общий префикс, который применится **сразу ко всем** аккаунтам в очереди:")
+    await state.set_state(BotSettings.waiting_for_global_prefix)
+    await callback.answer()
+
+@dp.message(BotSettings.waiting_for_global_prefix, check_permission)
+async def commit_global_prefix(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    new_prefix = message.text.strip()
+    
+    if uid in user_queue and user_queue[uid]:
+        for name in user_queue[uid].keys():
+            user_queue[uid][name] = new_prefix
+        await message.answer(f"✅ Общий префикс **{new_prefix}** успешно применен ко всем аккаунтам в очереди!")
+    
+    await state.clear()
+    await show_queue(message)
 
 @dp.callback_query(F.data == "flush_queue")
 async def flush_user_queue(callback: types.CallbackQuery):
@@ -182,22 +200,36 @@ async def flush_user_queue(callback: types.CallbackQuery):
         user_queue[uid].clear()
     await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
 
-@dp.message(lambda msg: len(msg.text.split()) == 2 and not msg.text.startswith("/"), check_permission)
-async def quick_set_prefix(message: types.Message):
-    uid = message.from_user.id
+@dp.callback_query(F.data.startswith("setidx_"))
+async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
+    uid = callback.from_user.id
     try:
-        new_prefix, target_name = message.text.split()
-        target_name = target_name.strip()
-        new_prefix = new_prefix.strip()
-        
-        if uid in user_queue and target_name in user_queue[uid]:
-            user_queue[uid][target_name] = new_prefix
-            await message.answer(f"✅ Префикс для `{target_name}` успешно изменен на **{new_prefix}**")
-            await show_queue(message)
-        else:
-            await message.answer("❌ Ошибка: аккаунт с таким номером не найден в вашей очереди.")
+        idx = int(callback.data.split("setidx_")[1])
+        current_keys = list(user_queue[uid].keys())
+        session_target = current_keys[idx]
     except Exception:
-        pass
+        await callback.message.answer("Ошибка: сессия не найдена. Попробуйте использовать кнопку общего префикса.")
+        await callback.answer()
+        return
+        
+    await state.set_state(BotSettings.waiting_for_prefix)
+    await state.update_data(target_session=session_target)
+    await callback.message.answer(f"Введите префикс для сессии `{session_target}`:")
+    await callback.answer()
+
+@dp.message(BotSettings.waiting_for_prefix, check_permission)
+async def commit_prefix_change(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    user_data = await state.get_data()
+    target = user_data.get("target_session")
+    new_prefix = message.text.strip()
+
+    if uid in user_queue and target in user_queue[uid]:
+        user_queue[uid][target] = new_prefix
+        await message.answer(f"✅ Префикс для `{target}` изменен на **{new_prefix}**")
+        
+    await state.clear()
+    await show_queue(message)
 
 @dp.message(F.text == "🚀 Запустить генерацию", check_permission)
 async def process_generation(message: types.Message):
