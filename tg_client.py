@@ -45,42 +45,46 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     bot_father = '@BotFather'
     
     try:
-        # ЗАПРАШИВАЕМ ТОКЕН СУЩЕСТВУЮЩЕГО БОТА ПРЯМО ИЗ ПЕРЕПИСКИ
-        await client.send_message(bot_father, '/mybots')
-        await asyncio.sleep(3)
-
-        messages = await client.get_messages(bot_father, limit=5)
         token = "Не удалось извлечь автоматически"
         selected_username = "Бот уже создан"
 
-        # Шаг 1: Сканируем последние сообщения в поисках токена
-        for msg in messages:
-            reply = msg.text if msg and msg.text else ""
-            if ":" in reply and "Use this token" not in reply:
+        # Запрашиваем список токенов
+        await client.send_message(bot_father, '/token')
+        await asyncio.sleep(3)
+        
+        # Забираем сообщение с инлайн-кнопками ботов
+        messages = await client.get_messages(bot_father, limit=1)
+        if messages and messages[0].reply_markup:
+            # Нажимаем на самую первую кнопку (это наш созданный бот)
+            try:
+                await messages[0].click(0)
+                await asyncio.sleep(3)
+                
+                # Читаем прилетевший токен
+                token_msgs = await client.get_messages(bot_father, limit=1)
+                reply = token_msgs[0].text if token_msgs else ""
+                
                 for line in reply.split("\n"):
                     clean_line = line.strip()
-                    # Ищем строку длиннее 40 символов, где есть двоеточие — это 100% токен
                     if ":" in clean_line and len(clean_line) > 40 and not clean_line.startswith("Use"):
                         token = clean_line
                         break
-            if token != "Не удалось извлечь автоматически":
-                break
+            except Exception:
+                pass
 
-        # Шаг 2: Если в последних сообщениях токена нет, запрашиваем его принудительно через команду /token
+        # Если кнопка не нажалась, ищем токен по истории сообщений
         if token == "Не удалось извлечь автоматически":
-            await client.send_message(bot_father, '/token')
-            await asyncio.sleep(3)
-            
-            # Смотрим ответ от BotFather
-            msgs = await client.get_messages(bot_father, limit=2)
-            for m in msgs:
+            all_msgs = await client.get_messages(bot_father, limit=15)
+            for m in all_msgs:
                 reply = m.text if m and m.text else ""
-                if ":" in reply:
+                if ":" in reply and "Use this token" not in reply:
                     for line in reply.split("\n"):
                         clean_line = line.strip()
                         if ":" in clean_line and len(clean_line) > 40 and not clean_line.startswith("Use"):
                             token = clean_line
                             break
+                if token != "Не удалось извлечь автоматически":
+                    break
 
     except Exception as e:
         await client.disconnect()
