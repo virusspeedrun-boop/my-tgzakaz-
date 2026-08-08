@@ -63,15 +63,17 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             except Exception:
                 pass
 
-        # Безопасный сбор последних сообщений без зависаний
+        # Безопасный сбор последних 10 сообщений диалога
+        history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
-        
-        async for message in client.iter_messages(bot_father, limit=15):
-            reply = message.text if message and message.text else ""
-            match = token_pattern.search(reply)
-            if match:
-                token = match.group(0)
-                break
+
+        if history:
+            for msg in history:
+                reply = msg.text if msg and msg.text else ""
+                match = token_pattern.search(reply)
+                if match:
+                    token = match.group(0)
+                    break
 
     except Exception as e:
         await client.disconnect()
