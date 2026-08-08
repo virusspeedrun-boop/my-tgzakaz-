@@ -63,14 +63,11 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             except Exception:
                 pass
 
-        # Собираем последние 15 сообщений диалога, чтобы гарантированно зацепить токен
-        all_msgs = await client.get_messages(bot_father, limit=15)
-        
-        # Железобетонный паттерн токена Telegram: цифры, двоеточие, и 35+ символов букв/цифр/знаков
+        # Безопасный сбор последних сообщений без зависаний
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
-
-        for m in all_msgs:
-            reply = m.text if m and m.text else ""
+        
+        async for message in client.iter_messages(bot_father, limit=15):
+            reply = message.text if message and message.text else ""
             match = token_pattern.search(reply)
             if match:
                 token = match.group(0)
