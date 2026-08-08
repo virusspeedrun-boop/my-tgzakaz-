@@ -61,14 +61,15 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             await asyncio.sleep(3)
 
             messages = await client.get_messages(bot_father, limit=1)
-            # ИСПРАВЛЕНИЕ: Извлекаем текст из первого объекта списка сообщений Telethon
             reply = messages[0].text if messages else ""
 
             if "Done! Congratulations" in reply:
                 try:
+                    # Исправленный поиск токена: берём строчку, где есть двоеточие, но которая длиннее 40 символов и содержит цифры
                     for line in reply.split("\n"):
-                        if ":" in line and len(line) > 30:
-                            token = line.strip()
+                        clean_line = line.strip()
+                        if ":" in clean_line and len(clean_line) > 35 and clean_line.split(":")[0].strip().isdigit():
+                            token = clean_line
                             break
                 except Exception:
                     token = "Ошибка извлечения токена"
