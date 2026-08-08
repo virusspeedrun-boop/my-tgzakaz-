@@ -20,11 +20,12 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         except Exception:
             return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
 
-    api_id = acc_data.get("api_id")
-    api_hash = acc_data.get("api_hash")
+    # Универсальное считывание: ищет и api_id, и app_id
+    api_id = acc_data.get("api_id") or acc_data.get("app_id")
+    api_hash = acc_data.get("api_hash") or acc_data.get("app_hash")
 
     if not api_id or not api_hash:
-        return {"status": "error", "message": "В JSON отсутствуют параметры api_id/api_hash"}
+        return {"status": "error", "message": "В JSON отсутствуют параметры api_id/app_id или api_hash/app_hash"}
 
     try:
         client = TelegramClient(session_path, int(api_id), api_hash)
