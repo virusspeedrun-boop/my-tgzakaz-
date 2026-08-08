@@ -1,4 +1,4 @@
-\import os
+import os
 
 BOT_TOKEN = "8307051627:AAFnXTHGcZSn4Hyt08d8HVPf9poMeUIG8xE"
 
