@@ -20,7 +20,6 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         except Exception:
             return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
 
-    # Универсальное считывание: ищет и api_id, и app_id
     api_id = acc_data.get("api_id") or acc_data.get("app_id")
     api_hash = acc_data.get("api_hash") or acc_data.get("app_hash")
 
@@ -62,7 +61,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             await asyncio.sleep(3)
 
             messages = await client.get_messages(bot_father, limit=1)
-            reply = messages.text if messages else ""
+            reply = messages[0].text if messages else ""
 
             if "Done! Congratulations" in reply:
                 try:
