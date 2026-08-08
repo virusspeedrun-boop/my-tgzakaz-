@@ -157,12 +157,11 @@ async def show_queue(message: types.Message):
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
     kb_list = []
     
-    # Кнопка для задания общего префикса сразу всем аккаунтам
     kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
     
     current_items = list(user_queue[uid].items())
     for idx, (name, prefix) in enumerate(current_items):
-        text += f"▪️ Аккаунт: `{name}` ➔ Префикс: **{prefix}**\n"
+        text += f"▪️ Аккаунт: {name} ➔ Префикс: {prefix}\n"
         kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setidx_{idx}")])
 
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
@@ -182,7 +181,7 @@ async def commit_global_prefix(message: types.Message, state: FSMContext):
     if uid in user_queue and user_queue[uid]:
         for name in user_queue[uid].keys():
             user_queue[uid][name] = new_prefix
-        await message.answer(f"✅ Общий префикс **{new_prefix}** успешно применен ко всем аккаунтам в очереди!")
+        await message.answer(f"✅ Общий префикс успешно применен ко всем аккаунтам в очереди!")
     
     await state.clear()
     await show_queue(message)
@@ -204,7 +203,7 @@ async def flush_user_queue(callback: types.CallbackQuery):
 async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
     try:
-        idx = int(callback.data.split("setidx_")[1])
+        idx = int(callback.data.split("setidx_"))
         current_keys = list(user_queue[uid].keys())
         session_target = current_keys[idx]
     except Exception:
@@ -214,7 +213,7 @@ async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
         
     await state.set_state(BotSettings.waiting_for_prefix)
     await state.update_data(target_session=session_target)
-    await callback.message.answer(f"Введите префикс для сессии `{session_target}`:")
+    await callback.message.answer(f"Введите префикс для сессии {session_target}:")
     await callback.answer()
 
 @dp.message(BotSettings.waiting_for_prefix, check_permission)
@@ -226,7 +225,7 @@ async def commit_prefix_change(message: types.Message, state: FSMContext):
 
     if uid in user_queue and target in user_queue[uid]:
         user_queue[uid][target] = new_prefix
-        await message.answer(f"✅ Префикс для `{target}` изменен на **{new_prefix}**")
+        await message.answer(f"✅ Префикс для {target} изменен на {new_prefix}")
         
     await state.clear()
     await show_queue(message)
@@ -242,11 +241,11 @@ async def process_generation(message: types.Message):
     tasks_to_process = user_queue[uid].copy()
     user_queue[uid].clear()
 
-    final_report = "📝 **ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:**\n\n"
+    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:\n\n"
     for name, prefix in tasks_to_process.items():
         spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
         jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
-        await message.answer(f"⏳ Начинаю обработку сессии `{name}` с префиксом `{prefix}`...")
+        await message.answer(f"⏳ Начинаю обработку сессии {name} с префиксом {prefix}...")
         
         try:
             res = await tg_client.register_bot_and_app(
@@ -257,14 +256,14 @@ async def process_generation(message: types.Message):
                 app_url=runtime_settings["url"]
             )
             if res["status"] == "success":
-                final_report += f"✅ `{name}` ➔ @{res['username']}\nТокен: `{res['token']}`\n\n"
+                final_report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
             else:
-                final_report += f"❌ `{name}` ➔ Ошибка: {res['message']}\n\n"
+                final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
         except Exception as e:
-            final_report += f"❌ `{name}` ➔ Системный сбой: {str(e)}\n\n"
+            final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
         await asyncio.sleep(5)
 
-    await message.answer(final_report, parse_mode="Markdown", reply_markup=build_main_keyboard())
+    await message.answer(final_report, reply_markup=build_main_keyboard())
 
 async def handle_webhook(request):
     try:
