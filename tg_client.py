@@ -45,54 +45,42 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     bot_father = '@BotFather'
     
     try:
-        await client.send_message(bot_father, '/cancel')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, '/newbot')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "App Launch Bot")
-        await asyncio.sleep(2)
+        # ЗАПРАШИВАЕМ ТОКЕН СУЩЕСТВУЮЩЕГО БОТА ПРЯМО ИЗ ПЕРЕПИСКИ
+        await client.send_message(bot_father, '/mybots')
+        await asyncio.sleep(3)
 
-        token = None
-        selected_username = None
-        
-        for _ in range(20):
-            selected_username = generate_random_username(prefix, hash_len)
-            await client.send_message(bot_father, selected_username)
+        messages = await client.get_messages(bot_father, limit=5)
+        token = "Не удалось извлечь автоматически"
+        selected_username = "Бот уже создан"
+
+        # Шаг 1: Сканируем последние сообщения в поисках токена
+        for msg in messages:
+            reply = msg.text if msg and msg.text else ""
+            if ":" in reply and "Use this token" not in reply:
+                for line in reply.split("\n"):
+                    clean_line = line.strip()
+                    # Ищем строку длиннее 40 символов, где есть двоеточие — это 100% токен
+                    if ":" in clean_line and len(clean_line) > 40 and not clean_line.startswith("Use"):
+                        token = clean_line
+                        break
+            if token != "Не удалось извлечь автоматически":
+                break
+
+        # Шаг 2: Если в последних сообщениях токена нет, запрашиваем его принудительно через команду /token
+        if token == "Не удалось извлечь автоматически":
+            await client.send_message(bot_father, '/token')
             await asyncio.sleep(3)
-
-            messages = await client.get_messages(bot_father, limit=1)
-            reply = messages[0].text if messages else ""
-
-            if "Done! Congratulations" in reply:
-                try:
-                    # Исправленный поиск токена: берём строчку, где есть двоеточие, но которая длиннее 40 символов и содержит цифры
+            
+            # Смотрим ответ от BotFather
+            msgs = await client.get_messages(bot_father, limit=2)
+            for m in msgs:
+                reply = m.text if m and m.text else ""
+                if ":" in reply:
                     for line in reply.split("\n"):
                         clean_line = line.strip()
-                        if ":" in clean_line and len(clean_line) > 35 and clean_line.split(":")[0].strip().isdigit():
+                        if ":" in clean_line and len(clean_line) > 40 and not clean_line.startswith("Use"):
                             token = clean_line
                             break
-                except Exception:
-                    token = "Ошибка извлечения токена"
-                break
-            elif "already taken" in reply or "invalid" in reply:
-                continue
-
-        if not token:
-            await client.disconnect()
-            return {"status": "error", "message": "Превышено число попыток генерации свободного юзернейма"}
-
-        await client.send_message(bot_father, '/newapp')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, f"@{selected_username}")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "Web Application")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "Mini App Description")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, app_url)
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "main")
-        await asyncio.sleep(3)
 
     except Exception as e:
         await client.disconnect()
