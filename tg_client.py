@@ -53,12 +53,14 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         await client.send_message(bot_father, '/token')
         await asyncio.sleep(3)
         
-        # Получаем сообщение с кнопками ботов
+        # Получаем последнее сообщение (limit=1 возвращает список сообщений)
         messages = await client.get_messages(bot_father, limit=1)
-        if messages and messages.reply_markup:
+        
+        # ИСПРАВЛЕНИЕ: Берем самый первый элемент списка [0] и у него проверяем reply_markup
+        if messages and len(messages) > 0 and messages[0].reply_markup:
             try:
-                # Кликаем по первой кнопке (выбираем нашего бота)
-                await messages.click(0)
+                # Кликаем по первой кнопке (выбираем нашего бота) через объект конкретного сообщения
+                await messages[0].click(0)
                 await asyncio.sleep(3)
             except Exception:
                 pass
