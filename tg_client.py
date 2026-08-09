@@ -1,17 +1,33 @@
 import os
 import json
-import string
-import random
 import asyncio
 import re
 from telethon import TelegramClient
 
-def generate_random_username(prefix: str, length: int) -> str:
-    chars = string.ascii_lowercase + string.digits
-    rand_hash = ''.join(random.choice(chars) for _ in range(length))
-    return f"{prefix}{rand_hash}bot"
+def get_seo_username(keyword: str, index: int) -> str:
+    # Список самых популярных комбинаций для вывода дорвеев в топ поиска Telegram
+    suffixes = [
+        "bot",
+        "_bot",
+        "robot",
+        "rbot",
+        "_robot",
+        "tbot",
+        "_tbot",
+        "official_bot",
+        "_official_bot",
+        "launch_bot"
+    ]
+    # Если аккаунтов больше, чем вариантов, запускаем круг заново, добавляя случайную цифру
+    loop_num = index // len(suffixes)
+    suffix_item = suffixes[index % len(suffixes)]
+    
+    if loop_num == 0:
+        return f"{keyword}{suffix_item}"
+    else:
+        return f"{keyword}{loop_num}{suffix_item}"
 
-async def register_bot_and_app(session_path: str, json_path: str, prefix: str, hash_len: int, app_url: str):
+async def register_bot_and_app(session_path: str, json_path: str, keyword: str, app_url: str, index_num: int):
     if not os.path.exists(json_path) or not os.path.exists(session_path):
         return {"status": "error", "message": "Файлы сессии повреждены или отсутствуют"}
 
@@ -47,32 +63,62 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     
     try:
         token = "Не удалось извлечь автоматически"
-        selected_username = "Бот уже создан"
+        
+        # Получаем уникальный поисковый юзернейм для этого аккаунта по его индексу в очереди
+        target_username = get_seo_username(keyword, index_num)
 
-        # Запрашиваем список токенов у BotFather
-        await client.send_message(bot_father, '/token')
+        await client.send_message(bot_father, '/cancel')
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, '/newbot')
+        await asyncio.sleep(2)
+        
+        # Название бота в поиске (Ключевое слово капсом для максимального SEO-эффекта)
+        await client.send_message(bot_father, f"{keyword.upper()} | Official Bot")
+        await asyncio.sleep(2)
+
+        # Отправляем сгенерированное поисковое имя
+        await client.send_message(bot_father, target_username)
         await asyncio.sleep(3)
-        
-        # Получаем последнее сообщение (limit=1 возвращает список сообщений)
-        messages = await client.get_messages(bot_father, limit=1)
-        
-        # ИСПРАВЛЕНИЕ: Берем самый первый элемент списка [0] и у него проверяем reply_markup
-        if messages and len(messages) > 0 and messages[0].reply_markup:
-            try:
-                # Кликаем по первой кнопке (выбираем нашего бота) через объект конкретного сообщения
-                await messages[0].click(0)
-                await asyncio.sleep(3)
-            except Exception:
-                pass
 
-        # Безопасный сбор последних 10 сообщений диалога
+        # Проверяем ответ от BotFather
+        messages = await client.get_messages(bot_father, limit=1)
+        reply = messages[0].text if messages and len(messages) > 0 else ""
+
+        # Если имя вдруг уже кем-то занято, софт добавит в конец случайное число, чтобы забить свободную нишу
+        if "already taken" in reply or "invalid" in reply:
+            for _ in range(5):
+                rand_num = random.randint(10, 99)
+                target_username = f"{keyword}{rand_num}bot"
+                await client.send_message(bot_father, target_username)
+                await asyncio.sleep(3)
+                
+                check_msg = await client.get_messages(bot_father, limit=1)
+                reply = check_msg[0].text if check_msg and len(check_msg) > 0 else ""
+                if "Done! Congratulations" in reply:
+                    break
+
+        # Привязываем Mini App домен
+        await client.send_message(bot_father, '/newapp')
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, f"@{target_username}")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "Web Application")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, f"SEO Дорвей-перенаправление проекта {keyword.upper()}")
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, app_url)
+        await asyncio.sleep(2)
+        await client.send_message(bot_father, "main")
+        await asyncio.sleep(3)
+
+        # Вытаскиваем готовый токен регулярным выражением из последних 10 сообщений диалога
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
         if history:
             for msg in history:
-                reply = msg.text if msg and msg.text else ""
-                match = token_pattern.search(reply)
+                r_text = msg.text if msg and msg.text else ""
+                match = token_pattern.search(r_text)
                 if match:
                     token = match.group(0)
                     break
@@ -89,4 +135,4 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     except Exception:
         pass
 
-    return {"status": "success", "username": selected_username, "token": token}
+    return {"status": "success", "username": target_username, "token": token}
