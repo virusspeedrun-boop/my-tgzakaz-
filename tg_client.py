@@ -11,7 +11,7 @@ def generate_random_username(prefix: str, length: int) -> str:
     rand_hash = ''.join(random.choice(chars) for _ in range(length))
     return f"{prefix}{rand_hash}bot"
 
-async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo: str, hash_len: int, app_url: str):
+async def register_bot_and_app(session_path: str, json_path: str, prefix: str, hash_len: int, app_url: str):
     if not os.path.exists(json_path) or not os.path.exists(session_path):
         return {"status": "error", "message": "Файлы сессии повреждены или отсутствуют"}
 
@@ -43,70 +43,44 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
     
     try:
         token = "Не удалось извлечь автоматически"
-        
-        is_seo = prefix_or_seo.startswith("SEO:")
-        
-        if is_seo:
-            target_username = prefix_or_seo.replace("SEO:", "")
-            display_title = f"{target_username.replace('bot','').replace('_','').upper()} | Поиск"
-        else:
-            display_title = "App Launch Bot"
+        selected_username = None
 
         await client.send_message(bot_father, '/cancel')
         await asyncio.sleep(2)
         await client.send_message(bot_father, '/newbot')
         await asyncio.sleep(2)
-        await client.send_message(bot_father, display_title)
+        await client.send_message(bot_father, "App Launch Bot")
         await asyncio.sleep(2)
 
-        if is_seo:
-            # Отправляем точную поисковую комбинацию
-            await client.send_message(bot_father, target_username)
+        for _ in range(20):
+            selected_username = generate_random_username(prefix, hash_len)
+            await client.send_message(bot_father, selected_username)
             await asyncio.sleep(3)
-            
-            check_msg = await client.get_messages(bot_father, limit=1)
-            reply = check_msg.text if check_msg and len(check_msg) > 0 else ""
-            
-            # УМНЫЙ ПЕРЕБОР: Если СЕО-имя занято, софт сам ищет свободную нишу рядом
-            if "already taken" in reply or "invalid" in reply:
-                for _ in range(5):
-                    rand_num = random.randint(10, 99)
-                    target_username = f"{target_username.replace('bot','').replace('_','')}{rand_num}bot"
-                    await client.send_message(bot_father, target_username)
-                    await asyncio.sleep(3)
-                    
-                    inner_check = await client.get_messages(bot_father, limit=1)
-                    inner_reply = inner_check.text if inner_check and len(inner_check) > 0 else ""
-                    if "Done! Congratulations" in inner_reply:
-                        break
-        else:
-            for _ in range(20):
-                target_username = generate_random_username(prefix_or_seo, hash_len)
-                await client.send_message(bot_father, target_username)
-                await asyncio.sleep(3)
 
-                messages = await client.get_messages(bot_father, limit=1)
-                reply = messages.text if messages and len(messages) > 0 else ""
-                if "Done! Congratulations" in reply:
-                    break
+            # Правильный индекс Telethon, который никогда не выдаст ошибку TotalList
+            messages = await client.get_messages(bot_father, limit=1)
+            reply = messages[0].text if messages else ""
 
-        # Привязываем Mini App домен
+            if "Done! Congratulations" in reply:
+                break
+            elif "already taken" in reply or "invalid" in reply:
+                continue
+
         await client.send_message(bot_father, '/newapp')
         await asyncio.sleep(2)
-        await client.send_message(bot_father, f"@{target_username}")
+        await client.send_message(bot_father, f"@{selected_username}")
         await asyncio.sleep(2)
         await client.send_message(bot_father, "Web Application")
         await asyncio.sleep(2)
-        await client.send_message(bot_father, f"Telegram Mini App")
+        await client.send_message(bot_father, "Telegram Mini App")
         await asyncio.sleep(2)
         await client.send_message(bot_father, app_url)
         await asyncio.sleep(2)
         await client.send_message(bot_father, "main")
         
-        # Пауза, чтобы базы Telegram успели обновиться
         await asyncio.sleep(3)
 
-        # Вытаскиваем токен регулярным выражением из массива последних сообщений
+        # Вытаскиваем токен чистым регулярным выражением
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
