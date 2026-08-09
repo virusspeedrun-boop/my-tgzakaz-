@@ -19,10 +19,12 @@ class BotSettings(StatesGroup):
     waiting_for_hash = State()
     waiting_for_prefix = State()
     waiting_for_global_prefix = State()
+    waiting_for_doorway_target = State()
 
 runtime_settings = {
     "url": "https://example.com",
-    "hash_len": 3
+    "hash_len": 3,
+    "doorway_target": "xhevn"
 }
 
 user_queue = {}
@@ -47,9 +49,9 @@ async def cmd_start(message: types.Message, state: FSMContext):
         user_queue[uid] = {}
         
     await message.answer(
-        "Система автоматизации создания ботов готова к работе.\n\n"
-        "Вы можете отправлять файлы .session и .json (по одному, группами или в .zip архиве).\n"
-        "После загрузки перейдите в меню для распределения префиксов.",
+        "Система автоматического создания поисковых SEO-дорвеев готова.\n\n"
+        "Вы можете отправлять файлы .session и .json в .zip архиве.\n"
+        "После загрузки перейдите в меню настроек для указания ключевого слова.",
         reply_markup=build_main_keyboard()
     )
 @dp.message(F.text == "⚙️ Настройки софта", check_permission)
@@ -57,11 +59,12 @@ async def show_settings(message: types.Message):
     text = (
         f"⚙️ **Текущие параметры автоматизации:**\n\n"
         f"🌐 **Mini App Домен:** `{runtime_settings['url']}`\n"
-        f"🔢 **Длина случайного хэша:** `{runtime_settings['hash_len']}` символов"
+        f"🔑 **Ключевое слово для поиска:** `{runtime_settings['doorway_target']}`\n\n"
+        f"*_При генерации софт автоматически подставит комбинации bot, _bot, robot, rbot, _official_bot и т.д._*"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Изменить домен", callback_data="change_url")],
-        [InlineKeyboardButton(text="✏️ Изменить длину хэша", callback_data="change_hash")]
+        [InlineKeyboardButton(text="✏️ Изменить домен Mini App", callback_data="change_url")],
+        [InlineKeyboardButton(text="🔗 Задать ключевое слово (Поиск)", callback_data="change_doorway")]
     ])
     await message.answer(text, reply_markup=kb, parse_mode="Markdown")
 
@@ -81,24 +84,18 @@ async def update_url(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(f"✅ Домен успешно изменен на: `{url}`", parse_mode="Markdown", reply_markup=build_main_keyboard())
 
-@dp.callback_query(F.data == "change_hash")
-async def process_change_hash(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Укажите длину генерируемого хэша (целое число от 2 до 10):")
-    await state.set_state(BotSettings.waiting_for_hash)
+@dp.callback_query(F.data == "change_doorway")
+async def process_change_doorway(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Отправьте ключевое слово (основу) для генерации дорвеев (например: `xhevn` без знака @):")
+    await state.set_state(BotSettings.waiting_for_doorway_target)
     await callback.answer()
 
-@dp.message(BotSettings.waiting_for_hash, check_permission)
-async def update_hash(message: types.Message, state: FSMContext):
-    try:
-        val = int(message.text.strip())
-        if not (2 <= val <= 10):
-            raise ValueError
-    except ValueError:
-        await message.answer("Ошибка: введите корректное число от 2 до 10.")
-        return
-    runtime_settings["hash_len"] = val
+@dp.message(BotSettings.waiting_for_doorway_target, check_permission)
+async def update_doorway_target(message: types.Message, state: FSMContext):
+    target = message.text.strip().replace("@", "")
+    runtime_settings["doorway_target"] = target
     await state.clear()
-    await message.answer(f"✅ Длина хэша установлена на **{val}** символов.", parse_mode="Markdown", reply_markup=build_main_keyboard())
+    await message.answer(f"✅ Ключевая SEO-основа изменена на: `{target}`", parse_mode="Markdown", reply_markup=build_main_keyboard())
 
 @dp.message(F.document, check_permission)
 async def catch_documents(message: types.Message):
@@ -120,15 +117,12 @@ async def catch_documents(message: types.Message):
                 for member in zip_ref.namelist():
                     if member.endswith('/'):
                         continue
-                    
                     pure_filename = os.path.basename(member)
                     m_base, m_ext = os.path.splitext(pure_filename)
-                    
                     if m_ext in ['.session', '.json']:
                         extracted_path = os.path.join(config.SESSIONS_DIR, pure_filename)
                         with open(extracted_path, "wb") as f:
                             f.write(zip_ref.read(member))
-                        
                         if m_ext == '.session' and m_base not in user_queue[uid]:
                             user_queue[uid][m_base] = "qq"
             os.remove(target_path)
@@ -139,53 +133,26 @@ async def catch_documents(message: types.Message):
             if os.path.exists(target_path): os.remove(target_path)
             return
 
-    if ext not in ['.session', '.json']:
-        if os.path.exists(target_path): os.remove(target_path)
-        return
-
     if ext == '.session' and base not in user_queue[uid]:
         user_queue[uid][base] = "qq"
 
-    await message.answer(f"📥 Загружен и сохранен файл: `{filename}`", parse_mode="Markdown")
+    await message.answer(f"📥 Загружен и сохранен файл: {filename}")
 @dp.message(F.text == "📋 Моя очередь", check_permission)
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша queue пуста. Отправьте файлы сессий или .zip архив.")
+        await message.answer("Ваша очередь пуста. Отправьте файлы сессий в .zip архиве.")
         return
 
-    text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
+    text = "📋 **Загруженные аккаунты в очереди:**\n\n"
     kb_list = []
     
-    kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
-    
     current_items = list(user_queue[uid].items())
-    for name, prefix in current_items:
-        text += f"▪️ Аккаунт: {name} ➔ Префикс: {prefix}\n"
-        clean_name = name.replace("+", "")
-        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
+    for idx, (name, prefix) in enumerate(current_items):
+        text += f"▪️ Аккаунт: {name}\n"
 
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
-
-@dp.callback_query(F.data == "set_global_prefix")
-async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Введите общий префикс, который применится **сразу ко всем** аккаунтам в очереди:")
-    await state.set_state(BotSettings.waiting_for_global_prefix)
-    await callback.answer()
-
-@dp.message(BotSettings.waiting_for_global_prefix, check_permission)
-async def commit_global_prefix(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    new_prefix = message.text.strip()
-    
-    if uid in user_queue and user_queue[uid]:
-        for name in user_queue[uid].keys():
-            user_queue[uid][name] = new_prefix
-        await message.answer(f"✅ Общий префикс успешно применен ко всем аккаунтам в очереди!")
-    
-    await state.clear()
-    await show_queue(message)
 
 @dp.callback_query(F.data == "flush_queue")
 async def flush_user_queue(callback: types.CallbackQuery):
@@ -198,46 +165,7 @@ async def flush_user_queue(callback: types.CallbackQuery):
             except Exception:
                 pass
         user_queue[uid].clear()
-    await callback.message.edit_text("🗑 Все загруженные файлы удалены, queue очищена.")
-
-@dp.callback_query(F.data.startswith("setname_"))
-async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
-    uid = callback.from_user.id
-    target_phone = callback.data.split("setname_")[1]
-    
-    session_target = None
-    if uid in user_queue:
-        for k in user_queue[uid].keys():
-            if k.replace("+", "") == target_phone:
-                session_target = k
-                break
-                
-    if not session_target:
-        session_target = f"+{target_phone}" if not target_phone.startswith("+") else target_phone
-        if uid not in user_queue:
-            user_queue[uid] = {}
-        user_queue[uid][session_target] = "qq"
-        
-    await state.set_state(BotSettings.waiting_for_prefix)
-    await state.update_data(target_session=session_target)
-    await callback.message.answer(f"Введите префикс для сессии {session_target}:")
-    await callback.answer()
-
-@dp.message(BotSettings.waiting_for_prefix, check_permission)
-async def commit_prefix_change(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    user_data = await state.get_data()
-    target = user_data.get("target_session")
-    new_prefix = message.text.strip()
-
-    if uid not in user_queue:
-        user_queue[uid] = {}
-    
-    user_queue[uid][target] = new_prefix
-    await message.answer(f"✅ Префикс для {target} изменен на {new_prefix}")
-        
-    await state.clear()
-    await show_queue(message)
+    await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
 
 @dp.message(F.text == "🚀 Запустить генерацию", check_permission)
 async def process_generation(message: types.Message):
@@ -246,23 +174,27 @@ async def process_generation(message: types.Message):
         await message.answer("Ошибка: нет доступных сессий для обработки.")
         return
 
-    await message.answer("🔄 Запуск процессов автоматизации через BotFather. Пожалуйста, ожидайте...")
+    await message.answer("🔄 Запуск массового вывода дорвеев в глобальный поиск Telegram. Пожалуйста, ожидайте...")
     tasks_to_process = user_queue[uid].copy()
     user_queue[uid].clear()
 
-    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:\n\n"
+    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ СЕО-ГЕНЕРАЦИИ:\n\n"
+    
+    # Порядковый номер аккаунта для распределения разных комбинаций юзернеймов
+    acc_index = 0
+    
     for name, prefix in tasks_to_process.items():
         spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
         jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
-        await message.answer(f"⏳ Начинаю обработку сессии {name} с префиксом {prefix}...")
+        await message.answer(f"⏳ Вывожу в топ аккаунт {name}...")
         
         try:
             res = await tg_client.register_bot_and_app(
                 session_path=spath,
                 json_path=jpath,
-                prefix=prefix,
-                hash_len=runtime_settings["hash_len"],
-                app_url=runtime_settings["url"]
+                keyword=runtime_settings["doorway_target"],
+                app_url=runtime_settings["url"],
+                index_num=acc_index
             )
             if res["status"] == "success":
                 final_report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
@@ -270,6 +202,8 @@ async def process_generation(message: types.Message):
                 final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
         except Exception as e:
             final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
+        
+        acc_index += 1
         await asyncio.sleep(5)
 
     await message.answer(final_report, reply_markup=build_main_keyboard())
@@ -289,8 +223,6 @@ async def on_startup(app):
         webhook_url = f"{render_url}/webhook"
         await bot.set_webhook(webhook_url, drop_pending_updates=True)
         print(f"[+] Установлен вебхук на: {webhook_url}")
-    else:
-        print("[-] RENDER_EXTERNAL_URL не найден.")
 
 def main():
     app = web.Application()
