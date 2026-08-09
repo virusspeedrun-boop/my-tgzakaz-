@@ -44,7 +44,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
     try:
         token = "Не удалось извлечь автоматически"
         
-        # Определяем режим: SEO-поисковый перехват или стандартная маска
+        # Режимы работы
         is_seo = prefix_or_seo.startswith("SEO:")
         
         if is_seo:
@@ -60,16 +60,13 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
         await client.send_message(bot_father, display_title)
         await asyncio.sleep(2)
 
-        # Регистрация юзернейма
         if is_seo:
-            # Отправляем точную сгенерированную SEO-комбинацию
             await client.send_message(bot_father, target_username)
             await asyncio.sleep(3)
             
             check_msg = await client.get_messages(bot_father, limit=1)
-            reply = check_msg.text if check_msg and len(check_msg) > 0 else ""
+            reply = check_msg[0].text if check_msg and len(check_msg) > 0 else ""
             
-            # Если точная СЕО-комбинация занята, дописываем случайную цифру для перехвата смежной ниши
             if "already taken" in reply or "invalid" in reply:
                 for _ in range(5):
                     rand_num = random.randint(10, 99)
@@ -78,18 +75,17 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
                     await asyncio.sleep(3)
                     
                     inner_check = await client.get_messages(bot_father, limit=1)
-                    inner_reply = inner_check.text if inner_check and len(inner_check) > 0 else ""
+                    inner_reply = inner_check[0].text if inner_check and len(inner_check) > 0 else ""
                     if "Done! Congratulations" in inner_reply:
                         break
         else:
-            # Обычный стандартный режим по маске + случайный хэш
             for _ in range(20):
                 target_username = generate_random_username(prefix_or_seo, hash_len)
                 await client.send_message(bot_father, target_username)
                 await asyncio.sleep(3)
 
                 messages = await client.get_messages(bot_father, limit=1)
-                reply = messages.text if messages and len(messages) > 0 else ""
+                reply = messages[0].text if messages and len(messages) > 0 else ""
                 if "Done! Congratulations" in reply:
                     break
 
@@ -107,7 +103,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
         await client.send_message(bot_father, "main")
         await asyncio.sleep(3)
 
-        # Вытаскиваем токен регулярным выражением
+        # Вытаскиваем токен регулярным выражением из массива сообщений
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
