@@ -19,7 +19,7 @@ class BotSettings(StatesGroup):
     waiting_for_hash = State()
     waiting_for_prefix = State()
     waiting_for_global_prefix = State()
-    waiting_for_seo_keyword = State()
+    waiting_for_seo_start = State()
 
 runtime_settings = {
     "url": "https://example.com",
@@ -34,8 +34,8 @@ def check_permission(message: types.Message) -> bool:
 def build_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Моя очередь")],
-            [KeyboardButton(text="🧬 Перехват Поиска (SEO)"), KeyboardButton(text="🚀 Запустить генерацию")]
+            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Список Дорвеев")],
+            [KeyboardButton(text="🧬 Перехват Поиска (SEO)")]
         ],
         resize_keyboard=True
     )
@@ -47,7 +47,6 @@ async def cmd_start(message: types.Message, state: FSMContext):
     if uid not in user_queue:
         user_queue[uid] = {}
         
-    # Красивая текстовая анимация загрузки системы с твоим юзом
     msg = await message.answer("🛸 *Инициализация системы...* [ ░/░░░░░░░░░ ]", parse_mode="Markdown")
     await asyncio.sleep(0.4)
     await msg.edit_text("🛸 *Синхронизация с серверами...* [ ███░░░░░░ ]", parse_mode="Markdown")
@@ -56,13 +55,12 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await asyncio.sleep(0.4)
     await msg.edit_text("⚡ *Доступ открыт! Добро пожаловать, @xhevn!* [ █████████ ]", parse_mode="Markdown")
     await asyncio.sleep(0.5)
-    
     await msg.delete()
     
     await message.answer(
         "👋 **Система автоматизации и СЕО-перехвата готова к работе!**\n\n"
         "Вы можете отправлять файлы `.session` и `.json` группами или в `.zip` архиве.\n"
-        "Для массового забивания ниш в поиске используйте кнопку на клавиатуре.",
+        "После загрузки перейдите в меню списка дорвеев для управления масками.",
         reply_markup=build_main_keyboard(),
         parse_mode="Markdown"
     )
@@ -134,19 +132,16 @@ async def catch_documents(message: types.Message):
                 for member in zip_ref.namelist():
                     if member.endswith('/'):
                         continue
-                    
                     pure_filename = os.path.basename(member)
                     m_base, m_ext = os.path.splitext(pure_filename)
-                    
                     if m_ext in ['.session', '.json']:
                         extracted_path = os.path.join(config.SESSIONS_DIR, pure_filename)
                         with open(extracted_path, "wb") as f:
                             f.write(zip_ref.read(member))
-                        
                         if m_ext == '.session' and m_base not in user_queue[uid]:
                             user_queue[uid][m_base] = "qq"
             os.remove(target_path)
-            await message.answer("📦 Архив успешно распакован! Все сессии добавлены в очередь.", parse_mode="Markdown")
+            await message.answer("📦 Архив успешно распакован! Все сессии добавлены в список дорвеев.", parse_mode="Markdown")
             return
         except Exception as e:
             await message.answer(f"❌ Ошибка при распаковке архива: {str(e)}")
@@ -158,19 +153,18 @@ async def catch_documents(message: types.Message):
         return
 
     if ext == '.session' and base not in user_queue[uid]:
-        user_queue[uid][base] = "qq"
+        user_queue[uid].setdefault(base, "qq")
 
     await message.answer(f"📥 Загружен и сохранен файл: `{filename}`", parse_mode="Markdown")
-@dp.message(F.text == "📋 Моя очередь", check_permission)
+@dp.message(F.text == "📋 Список Дорвеев", check_permission)
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша очередь пуста. Отправьте файлы сессий или .zip архив.")
+        await message.answer("Ваш список дорвеев пуст. Отправьте файлы сессий или .zip архив.")
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
     kb_list = []
-    
     kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
     
     current_items = list(user_queue[uid].items())
@@ -179,40 +173,11 @@ async def show_queue(message: types.Message):
         clean_name = name.replace("+", "")
         kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
 
-    kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
+    # Кнопка обычного запуска внутри меню «Список Дорвеев»
+    kb_list.append([InlineKeyboardButton(text="🚀 Запустить генерацию по маскам", callback_data="start_normal_gen")])
+    kb_list.append([InlineKeyboardButton(text="🗑 Очистить весь список", callback_data="flush_queue")])
+    
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
-
-@dp.message(F.text == "🧬 Перехват Поиска (SEO)", check_permission)
-async def init_seo_search(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ошибка: сначала загрузите .zip архив с сессиями, чтобы применить к ним перехват.")
-        return
-        
-    await message.answer("🔗 **Режим СЕО-тайпосквоттинга глобального поиска**\n\nОтправьте ключевую основу бренда (например: `xhevn` без @):\nБот автоматически сгенерирует комбинации xhevnbot, xhevn_bot, xhevnrobot и распределит их по аккаунтам.")
-    await state.set_state(BotSettings.waiting_for_seo_keyword)
-
-@dp.message(BotSettings.waiting_for_seo_keyword, check_permission)
-async def commit_seo_search(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    keyword = message.text.strip().replace("@", "").lower()
-    
-    suffixes = ["bot", "_bot", "robot", "rbot", "_robot", "tbot", "_tbot", "official_bot", "_official_bot"]
-    
-    if uid in user_queue and user_queue[uid]:
-        current_keys = list(user_queue[uid].keys())
-        for idx, name in enumerate(current_keys):
-            loop_num = idx // len(suffixes)
-            suffix_item = suffixes[idx % len(suffixes)]
-            if loop_num == 0:
-                user_queue[uid][name] = f"SEO:{keyword}{suffix_item}"
-            else:
-                user_queue[uid][name] = f"SEO:{keyword}{loop_num}{suffix_item}"
-                
-        await message.answer(f"🧬 Поисковые СЕО-маски для основы **{keyword}** успешно распределены по всем аккаунтам очереди!")
-    
-    await state.clear()
-    await show_queue(message)
 
 @dp.callback_query(F.data == "set_global_prefix")
 async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
@@ -241,12 +206,12 @@ async def flush_user_queue(callback: types.CallbackQuery):
                 os.remove(os.path.join(config.SESSIONS_DIR, f"{name}.json"))
             except Exception: pass
         user_queue[uid].clear()
-    await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
+    await callback.message.edit_text("🗑 Все загруженные файлы удалены, список очищен.")
 
 @dp.callback_query(F.data.startswith("setname_"))
 async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
-    target_phone = callback.data.split("setname_")[1]
+    target_phone = callback.data.split("setname_")
     session_target = None
     if uid in user_queue:
         for k in user_queue[uid].keys():
@@ -274,22 +239,23 @@ async def commit_prefix_change(message: types.Message, state: FSMContext):
     await state.clear()
     await show_queue(message)
 
-@dp.message(F.text == "🚀 Запустить генерацию", check_permission)
-async def process_generation(message: types.Message):
-    uid = message.from_user.id
+@dp.callback_query(F.data == "start_normal_gen")
+async def process_normal_generation(callback: types.CallbackQuery):
+    uid = callback.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ошибка: нет доступных сессий для обработки.")
+        await callback.message.answer("Ошибка: список пуст. Сначала отправьте архив.")
+        await callback.answer()
         return
 
-    await message.answer("🔄 Запуск процессов автоматизации через BotFather. Пожалуйста, ожидайте...")
+    await callback.message.answer("🔄 Запуск ОБЫЧНОЙ генерации ботов по маскам...")
     tasks_to_process = user_queue[uid].copy()
-    user_queue[uid].clear()
+    await callback.answer()
 
     final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:\n\n"
     for name, prefix in tasks_to_process.items():
         spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
         jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
-        await message.answer(f"⏳ Начинаю обработку сессии {name}...")
+        await callback.message.answer(f"⏳ Обрабатываю сессию {name} с маской {prefix}...")
         
         try:
             res = await tg_client.register_bot_and_app(
@@ -307,6 +273,57 @@ async def process_generation(message: types.Message):
             final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
         await asyncio.sleep(5)
 
+    user_queue[uid].clear()
+    await callback.message.answer(final_report, reply_markup=build_main_keyboard())
+
+@dp.message(F.text == "🧬 Перехват Поиска (SEO)", check_permission)
+async def init_seo_generation(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    if uid not in user_queue or not user_queue[uid]:
+        await message.answer("Ошибка: сначала отправьте `.zip` архив с сессиями!")
+        return
+    await message.answer("🔗 **Режим СЕО-перехвата глобального поиска**\n\nОтправьте ключевое слово (основу бренда) без знака @ (например: `saversmode`):\nСофт сам сгенерирует свободные комбинации суффиксов под поиск Telegram и сразу запустит процесс!")
+    await state.set_state(BotSettings.waiting_for_seo_start)
+
+@dp.message(BotSettings.waiting_for_seo_start, check_permission)
+async def process_seo_generation(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    keyword = message.text.strip().replace("@", "").lower()
+    await state.clear()
+    
+    suffixes = ["bot", "_bot", "robot", "rbot", "_robot", "tbot", "_tbot", "official_bot", "_official_bot"]
+    tasks_to_process = user_queue[uid].copy()
+    
+    await message.answer(f"🔄 Запуск СЕО-вывода в поиск для основы '{keyword}'...")
+    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ СЕО-ГЕНЕРАЦИИ:\n\n"
+    
+    current_keys = list(tasks_to_process.keys())
+    for idx, name in enumerate(current_keys):
+        spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
+        jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
+        await message.answer(f"⏳ Создаю поисковый дорвей для сессии {name}...")
+        
+        loop_num = idx // len(suffixes)
+        suffix_item = suffixes[idx % len(suffixes)]
+        seo_mask = f"SEO:{keyword}{suffix_item}" if loop_num == 0 else f"SEO:{keyword}{loop_num}{suffix_item}"
+        
+        try:
+            res = await tg_client.register_bot_and_app(
+                session_path=spath,
+                json_path=jpath,
+                prefix_or_seo=seo_mask,
+                hash_len=runtime_settings["hash_len"],
+                app_url=runtime_settings["url"]
+            )
+            if res["status"] == "success":
+                final_report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
+            else:
+                final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
+        except Exception as e:
+            final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
+        await asyncio.sleep(5)
+
+    user_queue[uid].clear()
     await message.answer(final_report, reply_markup=build_main_keyboard())
 
 async def handle_webhook(request):
