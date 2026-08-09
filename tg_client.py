@@ -1,41 +1,23 @@
 import os
 import json
+import string
+import random
 import asyncio
 import re
 from telethon import TelegramClient
 
-def get_seo_username(keyword: str, index: int) -> str:
-    # Список самых популярных комбинаций для вывода дорвеев в топ поиска Telegram
-    suffixes = [
-        "bot",
-        "_bot",
-        "robot",
-        "rbot",
-        "_robot",
-        "tbot",
-        "_tbot",
-        "official_bot",
-        "_official_bot",
-        "launch_bot"
-    ]
-    # Если аккаунтов больше, чем вариантов, запускаем круг заново, добавляя случайную цифру
-    loop_num = index // len(suffixes)
-    suffix_item = suffixes[index % len(suffixes)]
-    
-    if loop_num == 0:
-        return f"{keyword}{suffix_item}"
-    else:
-        return f"{keyword}{loop_num}{suffix_item}"
+def generate_random_username(prefix: str, length: int) -> str:
+    chars = string.ascii_lowercase + string.digits
+    rand_hash = ''.join(random.choice(chars) for _ in range(length))
+    return f"{prefix}{rand_hash}bot"
 
-async def register_bot_and_app(session_path: str, json_path: str, keyword: str, app_url: str, index_num: int):
+async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo: str, hash_len: int, app_url: str):
     if not os.path.exists(json_path) or not os.path.exists(session_path):
         return {"status": "error", "message": "Файлы сессии повреждены или отсутствуют"}
 
     with open(json_path, 'r', encoding='utf-8') as f:
-        try:
-            acc_data = json.load(f)
-        except Exception:
-            return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
+        try: acc_data = json.load(f)
+        except Exception: return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
 
     api_id = acc_data.get("api_id") or acc_data.get("app_id")
     api_hash = acc_data.get("api_hash") or acc_data.get("app_hash")
@@ -46,10 +28,8 @@ async def register_bot_and_app(session_path: str, json_path: str, keyword: str, 
     try:
         client = TelegramClient(session_path, int(api_id), api_hash)
         await asyncio.wait_for(client.connect(), timeout=15)
-    except asyncio.TimeoutError:
-        return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
-    except Exception as e:
-        return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
+    except asyncio.TimeoutError: return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
+    except Exception as e: return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
 
     try:
         if not await client.is_user_authorized():
@@ -64,36 +44,52 @@ async def register_bot_and_app(session_path: str, json_path: str, keyword: str, 
     try:
         token = "Не удалось извлечь автоматически"
         
-        # Получаем уникальный поисковый юзернейм для этого аккаунта по его индексу в очереди
-        target_username = get_seo_username(keyword, index_num)
+        # Определяем режим: SEO-поисковый перехват или стандартная маска
+        is_seo = prefix_or_seo.startswith("SEO:")
+        
+        if is_seo:
+            target_username = prefix_or_seo.replace("SEO:", "")
+            display_title = f"{target_username.replace('bot','').replace('_','').upper()} | Поиск"
+        else:
+            display_title = "App Launch Bot"
 
         await client.send_message(bot_father, '/cancel')
         await asyncio.sleep(2)
         await client.send_message(bot_father, '/newbot')
         await asyncio.sleep(2)
-        
-        # Название бота в поиске (Ключевое слово капсом для максимального SEO-эффекта)
-        await client.send_message(bot_father, f"{keyword.upper()} | Official Bot")
+        await client.send_message(bot_father, display_title)
         await asyncio.sleep(2)
 
-        # Отправляем сгенерированное поисковое имя
-        await client.send_message(bot_father, target_username)
-        await asyncio.sleep(3)
-
-        # Проверяем ответ от BotFather
-        messages = await client.get_messages(bot_father, limit=1)
-        reply = messages[0].text if messages and len(messages) > 0 else ""
-
-        # Если имя вдруг уже кем-то занято, софт добавит в конец случайное число, чтобы забить свободную нишу
-        if "already taken" in reply or "invalid" in reply:
-            for _ in range(5):
-                rand_num = random.randint(10, 99)
-                target_username = f"{keyword}{rand_num}bot"
+        # Регистрация юзернейма
+        if is_seo:
+            # Отправляем точную сгенерированную SEO-комбинацию
+            await client.send_message(bot_father, target_username)
+            await asyncio.sleep(3)
+            
+            check_msg = await client.get_messages(bot_father, limit=1)
+            reply = check_msg.text if check_msg and len(check_msg) > 0 else ""
+            
+            # Если точная СЕО-комбинация занята, дописываем случайную цифру для перехвата смежной ниши
+            if "already taken" in reply or "invalid" in reply:
+                for _ in range(5):
+                    rand_num = random.randint(10, 99)
+                    target_username = f"{target_username.replace('bot','').replace('_','')}{rand_num}bot"
+                    await client.send_message(bot_father, target_username)
+                    await asyncio.sleep(3)
+                    
+                    inner_check = await client.get_messages(bot_father, limit=1)
+                    inner_reply = inner_check.text if inner_check and len(inner_check) > 0 else ""
+                    if "Done! Congratulations" in inner_reply:
+                        break
+        else:
+            # Обычный стандартный режим по маске + случайный хэш
+            for _ in range(20):
+                target_username = generate_random_username(prefix_or_seo, hash_len)
                 await client.send_message(bot_father, target_username)
                 await asyncio.sleep(3)
-                
-                check_msg = await client.get_messages(bot_father, limit=1)
-                reply = check_msg[0].text if check_msg and len(check_msg) > 0 else ""
+
+                messages = await client.get_messages(bot_father, limit=1)
+                reply = messages.text if messages and len(messages) > 0 else ""
                 if "Done! Congratulations" in reply:
                     break
 
@@ -104,14 +100,14 @@ async def register_bot_and_app(session_path: str, json_path: str, keyword: str, 
         await asyncio.sleep(2)
         await client.send_message(bot_father, "Web Application")
         await asyncio.sleep(2)
-        await client.send_message(bot_father, f"SEO Дорвей-перенаправление проекта {keyword.upper()}")
+        await client.send_message(bot_father, f"Telegram Mini App")
         await asyncio.sleep(2)
         await client.send_message(bot_father, app_url)
         await asyncio.sleep(2)
         await client.send_message(bot_father, "main")
         await asyncio.sleep(3)
 
-        # Вытаскиваем готовый токен регулярным выражением из последних 10 сообщений диалога
+        # Вытаскиваем токен регулярным выражением
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
@@ -132,7 +128,6 @@ async def register_bot_and_app(session_path: str, json_path: str, keyword: str, 
     try:
         os.remove(session_path)
         os.remove(json_path)
-    except Exception:
-        pass
+    except Exception: pass
 
     return {"status": "success", "username": target_username, "token": token}
