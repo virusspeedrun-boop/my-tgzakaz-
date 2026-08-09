@@ -35,7 +35,7 @@ def build_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Моя очередь")],
-            [KeyboardButton(text="🚀 Запустить генерацию")]
+            [KeyboardButton(text="🧬 Перехват Поиска (SEO)"), KeyboardButton(text="🚀 Запустить генерацию")]
         ],
         resize_keyboard=True
     )
@@ -47,11 +47,24 @@ async def cmd_start(message: types.Message, state: FSMContext):
     if uid not in user_queue:
         user_queue[uid] = {}
         
+    # Красивая текстовая анимация загрузки системы с твоим юзом
+    msg = await message.answer("🛸 *Инициализация системы...* [ ░/░░░░░░░░░ ]", parse_mode="Markdown")
+    await asyncio.sleep(0.4)
+    await msg.edit_text("🛸 *Синхронизация с серверами...* [ ███░░░░░░ ]", parse_mode="Markdown")
+    await asyncio.sleep(0.4)
+    await msg.edit_text("🛸 *Авторизация разработчика @xhevn...* [ ██████░░░ ]", parse_mode="Markdown")
+    await asyncio.sleep(0.4)
+    await msg.edit_text("⚡ *Доступ открыт! Добро пожаловать, @xhevn!* [ █████████ ]", parse_mode="Markdown")
+    await asyncio.sleep(0.5)
+    
+    await msg.delete()
+    
     await message.answer(
-        "Система автоматизации создания ботов готова к работе.\n\n"
-        "Вы можете отправлять файлы .session и .json (по одному, группами или в .zip архиве).\n"
-        "После загрузки перейдите в меню для распределения префиксов или запуска SEO-генератора.",
-        reply_markup=build_main_keyboard()
+        "👋 **Система автоматизации и СЕО-перехвата готова к работе!**\n\n"
+        "Вы можете отправлять файлы `.session` и `.json` группами или в `.zip` архиве.\n"
+        "Для массового забивания ниш в поиске используйте кнопку на клавиатуре.",
+        reply_markup=build_main_keyboard(),
+        parse_mode="Markdown"
     )
 @dp.message(F.text == "⚙️ Настройки софта", check_permission)
 async def show_settings(message: types.Message):
@@ -158,41 +171,26 @@ async def show_queue(message: types.Message):
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
     kb_list = []
     
-    # Кнопки распределения масок
     kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
-    kb_list.append([InlineKeyboardButton(text="🧬 Сгенерировать SEO-поиск", callback_data="set_seo_search")])
     
     current_items = list(user_queue[uid].items())
     for name, prefix in current_items:
-        text += f"▪️ Аккаунт: {name} ➔ Префикс/SEO: {prefix}\n"
+        text += f"▪️ Аккаунт: {name} ➔ Настройка: {prefix}\n"
         clean_name = name.replace("+", "")
         kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
 
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
 
-@dp.callback_query(F.data == "set_global_prefix")
-async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Введите общий префикс, который применится **сразу ко всем** аккаунтам в очереди:")
-    await state.set_state(BotSettings.waiting_for_global_prefix)
-    await callback.answer()
-
-@dp.message(BotSettings.waiting_for_global_prefix, check_permission)
-async def commit_global_prefix(message: types.Message, state: FSMContext):
+@dp.message(F.text == "🧬 Перехват Поиска (SEO)", check_permission)
+async def init_seo_search(message: types.Message, state: FSMContext):
     uid = message.from_user.id
-    new_prefix = message.text.strip()
-    if uid in user_queue and user_queue[uid]:
-        for name in user_queue[uid].keys():
-            user_queue[uid][name] = new_prefix
-        await message.answer(f"✅ Общий префикс успешно применен ко всем аккаунтам в очереди!")
-    await state.clear()
-    await show_queue(message)
-
-@dp.callback_query(F.data == "set_seo_search")
-async def init_seo_search(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("Отправьте ключевую SEO-основу для глобального поиска (например: `xhevn` без знака @):\nБот автоматически сгенерирует комбинации xhevnbot, xhevn_bot, xhevnrobot и распределит их по аккаунтам.")
+    if uid not in user_queue or not user_queue[uid]:
+        await message.answer("Ошибка: сначала загрузите .zip архив с сессиями, чтобы применить к ним перехват.")
+        return
+        
+    await message.answer("🔗 **Режим СЕО-тайпосквоттинга глобального поиска**\n\nОтправьте ключевую основу бренда (например: `xhevn` без @):\nБот автоматически сгенерирует комбинации xhevnbot, xhevn_bot, xhevnrobot и распределит их по аккаунтам.")
     await state.set_state(BotSettings.waiting_for_seo_keyword)
-    await callback.answer()
 
 @dp.message(BotSettings.waiting_for_seo_keyword, check_permission)
 async def commit_seo_search(message: types.Message, state: FSMContext):
@@ -211,8 +209,25 @@ async def commit_seo_search(message: types.Message, state: FSMContext):
             else:
                 user_queue[uid][name] = f"SEO:{keyword}{loop_num}{suffix_item}"
                 
-        await message.answer(f"🧬 Поисковые СЕО-маски для основы **{keyword}** успешно распределены по всей очереди аккаунтов!")
+        await message.answer(f"🧬 Поисковые СЕО-маски для основы **{keyword}** успешно распределены по всем аккаунтам очереди!")
     
+    await state.clear()
+    await show_queue(message)
+
+@dp.callback_query(F.data == "set_global_prefix")
+async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("Введите общий префикс, который применится к каждому аккаунту:")
+    await state.set_state(BotSettings.waiting_for_global_prefix)
+    await callback.answer()
+
+@dp.message(BotSettings.waiting_for_global_prefix, check_permission)
+async def commit_global_prefix(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    new_prefix = message.text.strip()
+    if uid in user_queue and user_queue[uid]:
+        for name in user_queue[uid].keys():
+            user_queue[uid][name] = new_prefix
+        await message.answer("✅ Общий префикс успешно применен!")
     await state.clear()
     await show_queue(message)
 
