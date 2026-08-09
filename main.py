@@ -151,7 +151,7 @@ async def catch_documents(message: types.Message):
 async def show_queue(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ваша очередь пуста. Отправьте файлы сессий или .zip архив.")
+        await message.answer("Ваша queue пуста. Отправьте файлы сессий или .zip архив.")
         return
 
     text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
@@ -160,9 +160,10 @@ async def show_queue(message: types.Message):
     kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
     
     current_items = list(user_queue[uid].items())
-    for idx, (name, prefix) in enumerate(current_items):
+    for name, prefix in current_items:
         text += f"▪️ Аккаунт: {name} ➔ Префикс: {prefix}\n"
-        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setidx_{idx}")])
+        clean_name = name.replace("+", "")
+        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
 
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить всю очередь", callback_data="flush_queue")])
     await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
@@ -197,19 +198,25 @@ async def flush_user_queue(callback: types.CallbackQuery):
             except Exception:
                 pass
         user_queue[uid].clear()
-    await callback.message.edit_text("🗑 Все загруженные файлы удалены, очередь очищена.")
+    await callback.message.edit_text("🗑 Все загруженные файлы удалены, queue очищена.")
 
-@dp.callback_query(F.data.startswith("setidx_"))
+@dp.callback_query(F.data.startswith("setname_"))
 async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
-    try:
-        idx = int(callback.data.split("setidx_"))
-        current_keys = list(user_queue[uid].keys())
-        session_target = current_keys[idx]
-    except Exception:
-        await callback.message.answer("Ошибка: сессия не найдена. Попробуйте использовать кнопку общего префикса.")
-        await callback.answer()
-        return
+    target_phone = callback.data.split("setname_")[1]
+    
+    session_target = None
+    if uid in user_queue:
+        for k in user_queue[uid].keys():
+            if k.replace("+", "") == target_phone:
+                session_target = k
+                break
+                
+    if not session_target:
+        session_target = f"+{target_phone}" if not target_phone.startswith("+") else target_phone
+        if uid not in user_queue:
+            user_queue[uid] = {}
+        user_queue[uid][session_target] = "qq"
         
     await state.set_state(BotSettings.waiting_for_prefix)
     await state.update_data(target_session=session_target)
@@ -223,9 +230,11 @@ async def commit_prefix_change(message: types.Message, state: FSMContext):
     target = user_data.get("target_session")
     new_prefix = message.text.strip()
 
-    if uid in user_queue and target in user_queue[uid]:
-        user_queue[uid][target] = new_prefix
-        await message.answer(f"✅ Префикс для {target} изменен на {new_prefix}")
+    if uid not in user_queue:
+        user_queue[uid] = {}
+    
+    user_queue[uid][target] = new_prefix
+    await message.answer(f"✅ Префикс для {target} изменен на {new_prefix}")
         
     await state.clear()
     await show_queue(message)
