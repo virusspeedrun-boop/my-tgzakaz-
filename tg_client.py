@@ -16,8 +16,10 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         return {"status": "error", "message": "Файлы сессии повреждены или отсутствуют"}
 
     with open(json_path, 'r', encoding='utf-8') as f:
-        try: acc_data = json.load(f)
-        except Exception: return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
+        try:
+            acc_data = json.load(f)
+        except Exception:
+            return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
 
     api_id = acc_data.get("api_id") or acc_data.get("app_id")
     api_hash = acc_data.get("api_hash") or acc_data.get("app_hash")
@@ -28,8 +30,10 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     try:
         client = TelegramClient(session_path, int(api_id), api_hash)
         await asyncio.wait_for(client.connect(), timeout=15)
-    except asyncio.TimeoutError: return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
-    except Exception as e: return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
+    except Exception as e:
+        return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
 
     try:
         if not await client.is_user_authorized():
@@ -40,7 +44,6 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         return {"status": "error", "message": f"Ошибка авторизации: {str(e)}"}
 
     bot_father = '@BotFather'
-    
     try:
         token = "Не удалось извлечь автоматически"
         selected_username = None
@@ -57,7 +60,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
             await client.send_message(bot_father, selected_username)
             await asyncio.sleep(3)
 
-            # Правильный индекс Telethon, который никогда не выдаст ошибку TotalList
+            # Безопасное чтение ответа через первую строчку сообщения
             messages = await client.get_messages(bot_father, limit=1)
             reply = messages[0].text if messages else ""
 
@@ -80,7 +83,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         
         await asyncio.sleep(3)
 
-        # Вытаскиваем токен чистым регулярным выражением
+        # Вытаскиваем токен чистой регуляркой из истории сообщений
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
@@ -101,6 +104,8 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     try:
         os.remove(session_path)
         os.remove(json_path)
-    except Exception: pass
+    except Exception:
+        pass
 
-    return {"status": "success", "username": target_username, "token": token}
+    # Исправлено: возвращаем ту же переменную selected_username, которая заполнялась в цикле
+    return {"status": "success", "username": selected_username, "token": token}
