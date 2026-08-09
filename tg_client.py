@@ -44,7 +44,6 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
     try:
         token = "Не удалось извлечь автоматически"
         
-        # Режимы работы
         is_seo = prefix_or_seo.startswith("SEO:")
         
         if is_seo:
@@ -61,12 +60,14 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
         await asyncio.sleep(2)
 
         if is_seo:
+            # Отправляем точную поисковую комбинацию
             await client.send_message(bot_father, target_username)
             await asyncio.sleep(3)
             
             check_msg = await client.get_messages(bot_father, limit=1)
-            reply = check_msg[0].text if check_msg and len(check_msg) > 0 else ""
+            reply = check_msg.text if check_msg and len(check_msg) > 0 else ""
             
+            # УМНЫЙ ПЕРЕБОР: Если СЕО-имя занято, софт сам ищет свободную нишу рядом
             if "already taken" in reply or "invalid" in reply:
                 for _ in range(5):
                     rand_num = random.randint(10, 99)
@@ -75,7 +76,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
                     await asyncio.sleep(3)
                     
                     inner_check = await client.get_messages(bot_father, limit=1)
-                    inner_reply = inner_check[0].text if inner_check and len(inner_check) > 0 else ""
+                    inner_reply = inner_check.text if inner_check and len(inner_check) > 0 else ""
                     if "Done! Congratulations" in inner_reply:
                         break
         else:
@@ -85,7 +86,7 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
                 await asyncio.sleep(3)
 
                 messages = await client.get_messages(bot_father, limit=1)
-                reply = messages[0].text if messages and len(messages) > 0 else ""
+                reply = messages.text if messages and len(messages) > 0 else ""
                 if "Done! Congratulations" in reply:
                     break
 
@@ -101,9 +102,11 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix_or_seo:
         await client.send_message(bot_father, app_url)
         await asyncio.sleep(2)
         await client.send_message(bot_father, "main")
+        
+        # Пауза, чтобы базы Telegram успели обновиться
         await asyncio.sleep(3)
 
-        # Вытаскиваем токен регулярным выражением из массива сообщений
+        # Вытаскиваем токен регулярным выражением из массива последних сообщений
         history = await client.get_messages(bot_father, limit=10)
         token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
 
