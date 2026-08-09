@@ -19,7 +19,6 @@ class BotSettings(StatesGroup):
     waiting_for_hash = State()
     waiting_for_prefix = State()
     waiting_for_global_prefix = State()
-    waiting_for_seo_start = State()
 
 runtime_settings = {
     "url": "https://example.com",
@@ -34,8 +33,7 @@ def check_permission(message: types.Message) -> bool:
 def build_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Список Дорвеев")],
-            [KeyboardButton(text="🧬 Перехват Поиска (SEO)")]
+            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Список Дорвеев")]
         ],
         resize_keyboard=True
     )
@@ -58,7 +56,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await msg.delete()
     
     await message.answer(
-        "👋 **Система автоматизации и СЕО-перехвата готова к работе!**\n\n"
+        "👋 **Система автоматизации создания ботов готова к работе!**\n\n"
         "Вы можете отправлять файлы `.session` и `.json` группами или в `.zip` архиве.\n"
         "После загрузки перейдите в меню списка дорвеев для управления масками.",
         reply_markup=build_main_keyboard(),
@@ -173,7 +171,6 @@ async def show_queue(message: types.Message):
         clean_name = name.replace("+", "")
         kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
 
-    # Кнопка обычного запуска внутри меню «Список Дорвеев»
     kb_list.append([InlineKeyboardButton(text="🚀 Запустить генерацию по маскам", callback_data="start_normal_gen")])
     kb_list.append([InlineKeyboardButton(text="🗑 Очистить весь список", callback_data="flush_queue")])
     
@@ -247,7 +244,7 @@ async def process_normal_generation(callback: types.CallbackQuery):
         await callback.answer()
         return
 
-    await callback.message.answer("🔄 Запуск ОБЫЧНОЙ генерации ботов по маскам...")
+    await callback.message.answer("🔄 Запуск генерации ботов по маскам...")
     tasks_to_process = user_queue[uid].copy()
     await callback.answer()
 
@@ -261,7 +258,7 @@ async def process_normal_generation(callback: types.CallbackQuery):
             res = await tg_client.register_bot_and_app(
                 session_path=spath,
                 json_path=jpath,
-                prefix_or_seo=prefix,
+                prefix=prefix,
                 hash_len=runtime_settings["hash_len"],
                 app_url=runtime_settings["url"]
             )
@@ -275,56 +272,6 @@ async def process_normal_generation(callback: types.CallbackQuery):
 
     user_queue[uid].clear()
     await callback.message.answer(final_report, reply_markup=build_main_keyboard())
-
-@dp.message(F.text == "🧬 Перехват Поиска (SEO)", check_permission)
-async def init_seo_generation(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    if uid not in user_queue or not user_queue[uid]:
-        await message.answer("Ошибка: сначала отправьте `.zip` архив с сессиями!")
-        return
-    await message.answer("🔗 **Режим СЕО-перехвата глобального поиска**\n\nОтправьте ключевое слово (основу бренда) без знака @ (например: `saversmode`):\nСофт сам сгенерирует свободные комбинации суффиксов под поиск Telegram и сразу запустит процесс!")
-    await state.set_state(BotSettings.waiting_for_seo_start)
-
-@dp.message(BotSettings.waiting_for_seo_start, check_permission)
-async def process_seo_generation(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    keyword = message.text.strip().replace("@", "").lower()
-    await state.clear()
-    
-    suffixes = ["bot", "_bot", "robot", "rbot", "_robot", "tbot", "_tbot", "official_bot", "_official_bot"]
-    tasks_to_process = user_queue[uid].copy()
-    
-    await message.answer(f"🔄 Запуск СЕО-вывода в поиск для основы '{keyword}'...")
-    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ СЕО-ГЕНЕРАЦИИ:\n\n"
-    
-    current_keys = list(tasks_to_process.keys())
-    for idx, name in enumerate(current_keys):
-        spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
-        jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
-        await message.answer(f"⏳ Создаю поисковый дорвей для сессии {name}...")
-        
-        loop_num = idx // len(suffixes)
-        suffix_item = suffixes[idx % len(suffixes)]
-        seo_mask = f"SEO:{keyword}{suffix_item}" if loop_num == 0 else f"SEO:{keyword}{loop_num}{suffix_item}"
-        
-        try:
-            res = await tg_client.register_bot_and_app(
-                session_path=spath,
-                json_path=jpath,
-                prefix_or_seo=seo_mask,
-                hash_len=runtime_settings["hash_len"],
-                app_url=runtime_settings["url"]
-            )
-            if res["status"] == "success":
-                final_report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
-            else:
-                final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
-        except Exception as e:
-            final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
-        await asyncio.sleep(5)
-
-    user_queue[uid].clear()
-    await message.answer(final_report, reply_markup=build_main_keyboard())
 
 async def handle_webhook(request):
     try:
