@@ -16,9 +16,9 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         return {"status": "error", "message": "Файлы сессии повреждены или отсутствуют"}
 
     with open(json_path, 'r', encoding='utf-8') as f:
-        try:
+        try: 
             acc_data = json.load(f)
-        except Exception:
+        except Exception: 
             return {"status": "error", "message": "Ошибка чтения конфигурационного JSON"}
 
     api_id = acc_data.get("api_id") or acc_data.get("app_id")
@@ -30,9 +30,9 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
     try:
         client = TelegramClient(session_path, int(api_id), api_hash)
         await asyncio.wait_for(client.connect(), timeout=15)
-    except asyncio.TimeoutError:
+    except asyncio.TimeoutError: 
         return {"status": "error", "message": "Таймаут подключения к Telegram-клиенту"}
-    except Exception as e:
+    except Exception as e: 
         return {"status": "error", "message": f"Ошибка инициализации клиента: {str(e)}"}
 
     try:
@@ -44,68 +44,73 @@ async def register_bot_and_app(session_path: str, json_path: str, prefix: str, h
         return {"status": "error", "message": f"Ошибка авторизации: {str(e)}"}
 
     bot_father = '@BotFather'
+    selected_username = None
+    token = None
     try:
-        token = "Не удалось извлечь автоматически"
-        selected_username = None
+        # ЗАПУСКАЕМ ЖИВОЙ ИНТЕРАКТИВНЫЙ ДИАЛОГ С BOTFATHER
+        async with client.conversation(bot_father, timeout=60) as conv:
+            # Сбрасываем старые зависшие команды
+            await conv.send_message('/cancel')
+            await asyncio.sleep(1)
+            
+            # Начинаем создание бота
+            await conv.send_message('/newbot')
+            await conv.get_response() # Ждем ответа "Alright, a new bot..."
+            
+            await conv.send_message("App Launch Bot")
+            await conv.get_response() # Ждем ответа "Good. Now let's choose a username..."
 
-        await client.send_message(bot_father, '/cancel')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, '/newbot')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "App Launch Bot")
-        await asyncio.sleep(2)
+            # Цикл подбора свободного юзернейма в реальном времени
+            for _ in range(25):
+                selected_username = generate_random_username(prefix, hash_len)
+                await conv.send_message(selected_username)
+                
+                # Читаем точный живой ответ от BotFather
+                response = await conv.get_response()
+                reply_text = response.text if response and response.text else ""
 
-        for _ in range(20):
-            selected_username = generate_random_username(prefix, hash_len)
-            await client.send_message(bot_father, selected_username)
-            await asyncio.sleep(3)
-
-            # Безопасное чтение ответа через первую строчку сообщения
-            messages = await client.get_messages(bot_father, limit=1)
-            reply = messages[0].text if messages else ""
-
-            if "Done! Congratulations" in reply:
-                break
-            elif "already taken" in reply or "invalid" in reply:
-                continue
-
-        await client.send_message(bot_father, '/newapp')
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, f"@{selected_username}")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "Web Application")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "Telegram Mini App")
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, app_url)
-        await asyncio.sleep(2)
-        await client.send_message(bot_father, "main")
-        
-        await asyncio.sleep(3)
-
-        # Вытаскиваем токен чистой регуляркой из истории сообщений
-        history = await client.get_messages(bot_father, limit=10)
-        token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
-
-        if history:
-            for msg in history:
-                r_text = msg.text if msg and msg.text else ""
-                match = token_pattern.search(r_text)
-                if match:
-                    token = match.group(0)
+                if "Done! Congratulations" in reply_text:
+                    # Извлекаем токен из победного сообщения регуляркой
+                    token_pattern = re.compile(r'\d+:[A-Za-z0-9_-]{35,}')
+                    match = token_pattern.search(reply_text)
+                    if match:
+                        token = match.group(0)
                     break
+                elif "already taken" in reply_text or "invalid" in reply_text:
+                    continue
+
+            if not token:
+                await client.disconnect()
+                return {"status": "error", "message": "Не удалось подобрать свободный юзернейм в BotFather"}
+
+            # Начинаем привязку Web App (Mini App)
+            await conv.send_message('/newapp')
+            await conv.get_response() # Ждем ответа "Choose a bot..."
+            
+            await conv.send_message(f"@{selected_username}")
+            await conv.get_response() # Ждем ответа "Please choose a title..."
+            
+            await conv.send_message("Web Application")
+            await conv.get_response() # Ждем ответа "Please choose a description..."
+            
+            await conv.send_message("Telegram Mini App")
+            await conv.get_response() # Ждем ответа "Please send the URL..."
+            
+            await conv.send_message(app_url)
+            await conv.get_response() # Ждем ответа "Please choose a short name..."
+            
+            await conv.send_message("main")
+            await conv.get_response() # Финальный ответ об успехе Mini App
 
     except Exception as e:
         await client.disconnect()
-        return {"status": "error", "message": f"Сбой во время диалога с BotFather: {str(e)}"}
+        return {"status": "error", "message": f"Сбой интерактива BotFather: {str(e)}"}
 
     await client.disconnect()
     
     try:
         os.remove(session_path)
         os.remove(json_path)
-    except Exception:
-        pass
+    except Exception: pass
 
-    # Исправлено: возвращаем ту же переменную selected_username, которая заполнялась в цикле
     return {"status": "success", "username": selected_username, "token": token}
