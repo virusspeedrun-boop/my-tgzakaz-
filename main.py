@@ -268,7 +268,7 @@ async def process_normal_generation(callback: types.CallbackQuery):
                 final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
         except Exception as e:
             final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
-        await asyncio.sleep(5)
+        await asyncio.sleep(4)
 
     user_queue[uid].clear()
     await callback.message.answer(final_report, reply_markup=build_main_keyboard())
