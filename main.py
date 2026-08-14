@@ -14,32 +14,34 @@ import tg_client
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher()
 
-class BotSettings(StatesGroup):
-    waiting_for_url = State()
-    waiting_for_hash = State()
-    waiting_for_prefix = State()
-    waiting_for_global_prefix = State()
+class FlowState(StatesGroup):
+    set_url = State()
+    set_hash = State()
+    set_prefix = State()
+    set_global_prefix = State()
+    set_seo_start = State()
 
-runtime_settings = {
+runtime = {
     "url": "https://example.com",
     "hash_len": 3
 }
 
 user_queue = {}
 
-def check_permission(message: types.Message) -> bool:
-    return message.from_user.id in config.ALLOWED_USERS
+def has_access(msg: types.Message) -> bool:
+    return msg.from_user.id in config.ALLOWED_USERS
 
-def build_main_keyboard():
+def main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Список Дорвеев")]
+            [KeyboardButton(text="⚙️ Настройки софта"), KeyboardButton(text="📋 Список Дорвеев")],
+            [KeyboardButton(text="🧬 Перехват Поиска (SEO)")]
         ],
         resize_keyboard=True
     )
 
-@dp.message(Command("start"), check_permission)
-async def cmd_start(message: types.Message, state: FSMContext):
+@dp.message(Command("start"), has_access)
+async def init_session(message: types.Message, state: FSMContext):
     await state.clear()
     uid = message.from_user.id
     if uid not in user_queue:
@@ -56,62 +58,62 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await msg.delete()
     
     await message.answer(
-        "👋 **Система автоматизации создания ботов готова к работе!**\n\n"
+        "👋 **Система автоматизации и СЕО-перехвата готова к работе!**\n\n"
         "Вы можете отправлять файлы `.session` и `.json` группами или в `.zip` архиве.\n"
         "После загрузки перейдите в меню списка дорвеев для управления масками.",
-        reply_markup=build_main_keyboard(),
+        reply_markup=main_kb(),
         parse_mode="Markdown"
     )
-@dp.message(F.text == "⚙️ Настройки софта", check_permission)
-async def show_settings(message: types.Message):
-    text = (
+@dp.message(F.text == "⚙️ Настройки софта", has_access)
+async def route_settings(message: types.Message):
+    out = (
         f"⚙️ **Текущие параметры автоматизации:**\n\n"
-        f"🌐 **Mini App Домен:** `{runtime_settings['url']}`\n"
-        f"🔢 **Длина случайного хэша:** `{runtime_settings['hash_len']}` символов"
+        f"🌐 **Mini App Домен:** `{runtime['url']}`\n"
+        f"🔢 **Длина случайного хэша:** `{runtime['hash_len']}` символов"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✏️ Изменить домен", callback_data="change_url")],
-        [InlineKeyboardButton(text="✏️ Изменить длину хэша", callback_data="change_hash")]
+        [InlineKeyboardButton(text="✏️ Изменить домен", callback_data="mod_url")],
+        [InlineKeyboardButton(text="✏️ Изменить длину хэша", callback_data="mod_hash")]
     ])
-    await message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await message.answer(out, reply_markup=kb, parse_mode="Markdown")
 
-@dp.callback_query(F.data == "change_url")
-async def process_change_url(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "mod_url")
+async def req_url(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Отправьте новый целевой URL-домен для привязки к Mini App:")
-    await state.set_state(BotSettings.waiting_for_url)
+    await state.set_state(FlowState.set_url)
     await callback.answer()
 
-@dp.message(BotSettings.waiting_for_url, check_permission)
-async def update_url(message: types.Message, state: FSMContext):
-    url = message.text.strip()
-    if not url.startswith(("http://", "https://")):
+@dp.message(FlowState.set_url, has_access)
+async def commit_url(message: types.Message, state: FSMContext):
+    val = message.text.strip()
+    if not val.startswith(("http://", "https://")):
         await message.answer("Ошибка: URL должен начинаться с http:// или https://. Попробуйте еще раз.")
         return
-    runtime_settings["url"] = url
+    runtime["url"] = val
     await state.clear()
-    await message.answer(f"✅ Домен успешно изменен на: `{url}`", parse_mode="Markdown", reply_markup=build_main_keyboard())
+    await message.answer(f"✅ Домен успешно изменен на: `{val}`", parse_mode="Markdown", reply_markup=main_kb())
 
-@dp.callback_query(F.data == "change_hash")
-async def process_change_hash(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "mod_hash")
+async def req_hash(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Укажите длину генерируемого хэша (целое число от 2 до 10):")
-    await state.set_state(BotSettings.waiting_for_hash)
+    await state.set_state(FlowState.set_hash)
     await callback.answer()
 
-@dp.message(BotSettings.waiting_for_hash, check_permission)
-async def update_hash(message: types.Message, state: FSMContext):
+@dp.message(FlowState.set_hash, has_access)
+async def commit_hash(message: types.Message, state: FSMContext):
     try:
-        val = int(message.text.strip())
-        if not (2 <= val <= 10):
+        num = int(message.text.strip())
+        if not (2 <= num <= 10):
             raise ValueError
     except ValueError:
         await message.answer("Ошибка: введите корректное число от 2 до 10.")
         return
-    runtime_settings["hash_len"] = val
+    runtime["hash_len"] = num
     await state.clear()
-    await message.answer(f"✅ Длина хэша установлена на **{val}** символов.", parse_mode="Markdown", reply_markup=build_main_keyboard())
+    await message.answer(f"✅ Длина хэша установлена на **{num}** символов.", parse_mode="Markdown", reply_markup=main_kb())
 
-@dp.message(F.document, check_permission)
-async def catch_documents(message: types.Message):
+@dp.message(F.document, has_access)
+async def handle_docs(message: types.Message):
     uid = message.from_user.id
     doc = message.document
     filename = doc.file_name
@@ -120,124 +122,123 @@ async def catch_documents(message: types.Message):
     if uid not in user_queue:
         user_queue[uid] = {}
 
-    target_path = os.path.join(config.SESSIONS_DIR, filename)
-    file_info = await bot.get_file(doc.file_id)
-    await bot.download_file(file_info.file_path, target_path)
+    f_path = os.path.join(config.SESSIONS_DIR, filename)
+    obj = await bot.get_file(doc.file_id)
+    await bot.download_file(obj.file_path, f_path)
 
     if ext == '.zip':
         try:
-            with zipfile.ZipFile(target_path, 'r') as zip_ref:
-                for member in zip_ref.namelist():
-                    if member.endswith('/'):
+            with zipfile.ZipFile(f_path, 'r') as zr:
+                for item in zr.namelist():
+                    if item.endswith('/'):
                         continue
-                    pure_filename = os.path.basename(member)
-                    m_base, m_ext = os.path.splitext(pure_filename)
+                    p_name = os.path.basename(item)
+                    m_base, m_ext = os.path.splitext(p_name)
                     if m_ext in ['.session', '.json']:
-                        extracted_path = os.path.join(config.SESSIONS_DIR, pure_filename)
-                        with open(extracted_path, "wb") as f:
-                            f.write(zip_ref.read(member))
+                        ex_path = os.path.join(config.SESSIONS_DIR, p_name)
+                        with open(ex_path, "wb") as f:
+                            f.write(zr.read(item))
                         if m_ext == '.session' and m_base not in user_queue[uid]:
                             user_queue[uid][m_base] = "qq"
-            os.remove(target_path)
+            os.remove(f_path)
             await message.answer("📦 Архив успешно распакован! Все сессии добавлены в список дорвеев.", parse_mode="Markdown")
             return
         except Exception as e:
             await message.answer(f"❌ Ошибка при распаковке архива: {str(e)}")
-            if os.path.exists(target_path): os.remove(target_path)
+            if os.path.exists(f_path): os.remove(f_path)
             return
 
     if ext not in ['.session', '.json']:
-        if os.path.exists(target_path): os.remove(target_path)
+        if os.path.exists(f_path): os.remove(f_path)
         return
 
     if ext == '.session' and base not in user_queue[uid]:
         user_queue[uid].setdefault(base, "qq")
 
     await message.answer(f"📥 Загружен и сохранен файл: `{filename}`", parse_mode="Markdown")
-@dp.message(F.text == "📋 Список Дорвеев", check_permission)
-async def show_queue(message: types.Message):
+@dp.message(F.text == "📋 Список Дорвеев", has_access)
+async def list_doorways(message: types.Message):
     uid = message.from_user.id
     if uid not in user_queue or not user_queue[uid]:
         await message.answer("Ваш список дорвеев пуст. Отправьте файлы сессий или .zip архив.")
         return
 
-    text = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
-    kb_list = []
-    kb_list.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="set_global_prefix")])
+    out = "📋 **Загруженные аккаунты и настройки масок:**\n\n"
+    kb = []
+    kb.append([InlineKeyboardButton(text="✏️ Задать общий префикс для ВСЕХ", callback_data="bulk_prefix")])
     
-    current_items = list(user_queue[uid].items())
-    for name, prefix in current_items:
-        text += f"▪️ Аккаунт: {name} ➔ Настройка: {prefix}\n"
-        clean_name = name.replace("+", "")
-        kb_list.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean_name}")])
+    for name, prefix in list(user_queue[uid].items()):
+        out += f"▪️ Аккаунт: {name} ➔ Настройка: {prefix}\n"
+        clean = name.replace("+", "")
+        kb.append([InlineKeyboardButton(text=f"Префикс для {name}", callback_data=f"setname_{clean}")])
 
-    kb_list.append([InlineKeyboardButton(text="🚀 Запустить генерацию по маскам", callback_data="start_normal_gen")])
-    kb_list.append([InlineKeyboardButton(text="🗑 Очистить весь список", callback_data="flush_queue")])
+    kb.append([InlineKeyboardButton(text="🚀 Запустить генерацию по маскам", callback_data="run_gen")])
+    kb.append([InlineKeyboardButton(text="🗑 Очистить весь список", callback_data="clear_queue")])
     
-    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_list), parse_mode="Markdown")
+    await message.answer(out, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="Markdown")
 
-@dp.callback_query(F.data == "set_global_prefix")
-async def init_global_prefix(callback: types.CallbackQuery, state: FSMContext):
+@dp.callback_query(F.data == "bulk_prefix")
+async def req_bulk_prefix(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Введите общий префикс, который применится к каждому аккаунту:")
-    await state.set_state(BotSettings.waiting_for_global_prefix)
+    await state.set_state(FlowState.set_global_prefix)
     await callback.answer()
 
-@dp.message(BotSettings.waiting_for_global_prefix, check_permission)
-async def commit_global_prefix(message: types.Message, state: FSMContext):
+@dp.message(FlowState.set_global_prefix, has_access)
+async def commit_bulk_prefix(message: types.Message, state: FSMContext):
     uid = message.from_user.id
-    new_prefix = message.text.strip()
+    val = message.text.strip()
     if uid in user_queue and user_queue[uid]:
-        for name in user_queue[uid].keys():
-            user_queue[uid][name] = new_prefix
+        for k in user_queue[uid].keys():
+            user_queue[uid][k] = val
         await message.answer("✅ Общий префикс успешно применен!")
     await state.clear()
-    await show_queue(message)
+    await list_doorways(message)
 
-@dp.callback_query(F.data == "flush_queue")
-async def flush_user_queue(callback: types.CallbackQuery):
+@dp.callback_query(F.data == "clear_queue")
+async def drop_queue(callback: types.CallbackQuery):
     uid = callback.from_user.id
     if uid in user_queue:
-        for name in list(user_queue[uid].keys()):
+        for k in list(user_queue[uid].keys()):
             try:
-                os.remove(os.path.join(config.SESSIONS_DIR, f"{name}.session"))
-                os.remove(os.path.join(config.SESSIONS_DIR, f"{name}.json"))
+                os.remove(os.path.join(config.SESSIONS_DIR, f"{k}.session"))
+                os.remove(os.path.join(config.SESSIONS_DIR, f"{k}.json"))
             except Exception: pass
         user_queue[uid].clear()
     await callback.message.edit_text("🗑 Все загруженные файлы удалены, список очищен.")
 
 @dp.callback_query(F.data.startswith("setname_"))
-async def init_prefix_change(callback: types.CallbackQuery, state: FSMContext):
+async def req_single_prefix(callback: types.CallbackQuery, state: FSMContext):
     uid = callback.from_user.id
-    target_phone = callback.data.split("setname_")
-    session_target = None
+    phone = callback.data.split("setname_")
+    target = None
     if uid in user_queue:
         for k in user_queue[uid].keys():
-            if k.replace("+", "") == target_phone:
-                session_target = k
+            if k.replace("+", "") == phone:
+                target = k
                 break
-    if not session_target:
-        session_target = f"+{target_phone}" if not target_phone.startswith("+") else target_phone
+    if not target:
+        target = f"+{phone}" if not phone.startswith("+") else phone
         if uid not in user_queue: user_queue[uid] = {}
-        user_queue[uid][session_target] = "qq"
-    await state.set_state(BotSettings.waiting_for_prefix)
-    await state.update_data(target_session=session_target)
-    await callback.message.answer(f"Введите префикс для сессии {session_target}:")
+        user_queue[uid][target] = "qq"
+    await state.set_state(FlowState.set_prefix)
+    await state.update_data(target_session=target)
+    await callback.message.answer(f"Введите префикс для сессии {target}:")
     await callback.answer()
 
-@dp.message(BotSettings.waiting_for_prefix, check_permission)
-async def commit_prefix_change(message: types.Message, state: FSMContext):
+@dp.message(FlowState.set_prefix, has_access)
+async def commit_single_prefix(message: types.Message, state: FSMContext):
     uid = message.from_user.id
-    user_data = await state.get_data()
-    target = user_data.get("target_session")
-    new_prefix = message.text.strip()
+    ctx = await state.get_data()
+    target = ctx.get("target_session")
+    val = message.text.strip()
     if uid not in user_queue: user_queue[uid] = {}
-    user_queue[uid][target] = new_prefix
-    await message.answer(f"✅ Префикс для {target} изменен на {new_prefix}")
+    user_queue[uid][target] = val
+    await message.answer(f"✅ Префикс для {target} изменен на {val}")
     await state.clear()
-    await show_queue(message)
+    await list_doorways(message)
 
-@dp.callback_query(F.data == "start_normal_gen")
-async def process_normal_generation(callback: types.CallbackQuery):
+@dp.callback_query(F.data == "run_gen")
+async def handle_gen(callback: types.CallbackQuery):
     uid = callback.from_user.id
     if uid not in user_queue or not user_queue[uid]:
         await callback.message.answer("Ошибка: список пуст. Сначала отправьте архив.")
@@ -245,49 +246,86 @@ async def process_normal_generation(callback: types.CallbackQuery):
         return
 
     await callback.message.answer("🔄 Запуск генерации ботов по маскам...")
-    tasks_to_process = user_queue[uid].copy()
+    job_stack = user_queue[uid].copy()
     await callback.answer()
 
-    final_report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:\n\n"
-    for name, prefix in tasks_to_process.items():
+    report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ РАБОТЫ:\n\n"
+    for name, prefix in job_stack.items():
         spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
         jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
         await callback.message.answer(f"⏳ Обрабатываю сессию {name} с маской {prefix}...")
         
         try:
-            res = await tg_client.register_bot_and_app(
-                session_path=spath,
-                json_path=jpath,
-                prefix=prefix,
-                hash_len=runtime_settings["hash_len"],
-                app_url=runtime_settings["url"]
-            )
+            res = await tg_client.register_bot_and_app(spath, jpath, prefix, runtime["hash_len"], runtime["url"])
             if res["status"] == "success":
-                final_report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
+                report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
             else:
-                final_report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
+                report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
         except Exception as e:
-            final_report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
+            report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
         await asyncio.sleep(4)
 
     user_queue[uid].clear()
-    await callback.message.answer(final_report, reply_markup=build_main_keyboard())
+    await callback.message.answer(report, reply_markup=main_kb())
 
-async def handle_webhook(request):
+@dp.message(F.text == "🧬 Перехват Поиска (SEO)", has_access)
+async def req_seo(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    if uid not in user_queue or not user_queue[uid]:
+        await message.answer("Ошибка: сначала отправьте `.zip` архив с сессиями!")
+        return
+    await message.answer("🔗 **Режим СЕО-перехвата глобального поиска**\n\nОтправьте ключевое слово (основу бренда) без знака @ (например: `saversmode`):")
+    await state.set_state(FlowState.set_seo_start)
+
+@dp.message(FlowState.set_seo_start, has_access)
+async def commit_seo(message: types.Message, state: FSMContext):
+    uid = message.from_user.id
+    kw = message.text.strip().replace("@", "").lower()
+    await state.clear()
+    
+    patterns = ["bot", "_bot", "robot", "rbot", "_robot", "tbot", "_tbot", "official_bot", "_official_bot"]
+    job_stack = user_queue[uid].copy()
+    
+    await message.answer(f"🔄 Запуск СЕО-вывода в поиск для основы '{kw}'...")
+    report = "📝 ОТЧЕТ ПО ЗАВЕРШЕНИЮ СЕО-ГЕНЕРАЦИИ:\n\n"
+    
+    for idx, name in enumerate(list(job_stack.keys())):
+        spath = os.path.join(config.SESSIONS_DIR, f"{name}.session")
+        jpath = os.path.join(config.SESSIONS_DIR, f"{name}.json")
+        await message.answer(f"⏳ Создаю поисковый дорвей для сессии {name}...")
+        
+        loop = idx // len(patterns)
+        sfx = patterns[idx % len(patterns)]
+        mask = f"SEO:{kw}{sfx}" if loop == 0 else f"SEO:{kw}{loop}{sfx}"
+        
+        try:
+            res = await tg_client.register_bot_and_app(spath, jpath, mask, runtime["hash_len"], runtime["url"])
+            if res["status"] == "success":
+                report += f"✅ {name} ➔ @{res['username']}\nТокен: {res['token']}\n\n"
+            else:
+                report += f"❌ {name} ➔ Ошибка: {res['message']}\n\n"
+        except Exception as e:
+            report += f"❌ {name} ➔ Системный сбой: {str(e)}\n\n"
+        await asyncio.sleep(5)
+
+    user_queue[uid].clear()
+    await message.answer(report, reply_markup=main_kb())
+
+async def webhook_handler(request):
     try:
-        data = await request.json()
-        await dp.feed_update(bot, types.Update(**data))
-    except Exception as e: print(f"[-] Ошибка вебхука: {e}")
+        body = await request.json()
+        await dp.feed_update(bot, types.Update(**body))
+    except Exception as e: print(f"[!] Webhook error: {e}")
     return web.Response(text="OK")
 
-async def on_startup(app):
-    render_url = os.environ.get("RENDER_EXTERNAL_URL")
-    if render_url: await bot.set_webhook(f"{render_url}/webhook", drop_pending_updates=True)
+async def boot(app):
+    host_url = os.environ.get("RENDER_EXTERNAL_URL")
+    if host_url: await bot.set_webhook(f"{host_url}/webhook", drop_pending_updates=True)
 
 def main():
     app = web.Application()
-    app.router.add_post('/webhook', handle_webhook)
-    app.on_startup.append(on_startup)
+    app.router.add_post('/webhook', webhook_handler)
+    app.on_startup.append(boot)
     web.run_app(app, host='0.0.0.0', port=int(os.environ.get("PORT", 10000)), access_log=None)
 
 if __name__ == "__main__": main()
